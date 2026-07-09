@@ -1,0 +1,30 @@
+{
+  "name": "freebuff-termux",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
+  },
+  "keywords": [
+    "freebuff",
+    "termux",
+    "android",
+    "codebuff",
+    "ai-coding-agent"
+  ],
+  "author": "",
+  "license": "MIT",
+  "description": "FreeBuff (free Codebuff) Termux 호환 레이어 — B+C 하이브리드 전략 기반",
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.1.1",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.11",
+    "typescript": "^6.0.3"
+  }
+}
