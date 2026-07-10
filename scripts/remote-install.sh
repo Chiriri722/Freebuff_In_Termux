@@ -111,11 +111,28 @@ log_ok "TypeScript build complete (dist/index.js)"
 
 # ─── 5. proot-distro distro 설치 ─────────────────────────────
 log_info "Step 5/9: Installing ${DISTRO} distro via proot-distro..."
-if proot-distro list --installed 2>/dev/null | grep -q "^${DISTRO}$"; then
+
+# distro 설치 여부 확인:
+# proot-distro list --installed 출력에서 distro 이름이 포함되어 있는지 검사
+# (출력 포맷이 버전마다 다를 수 있으므로 단순 grep 사용)
+if proot-distro list --installed 2>/dev/null | grep -qw "${DISTRO}"; then
     log_ok "Distro '${DISTRO}' is already installed"
 else
-    proot-distro install "${DISTRO}"
-    log_ok "Distro '${DISTRO}' installed successfully"
+    # install 시도 — 이미 존재하면 에러가 나므로 별도 처리
+    if proot-distro install "${DISTRO}" 2>&1 | tee /dev/stderr | grep -q "already exists"; then
+        log_ok "Distro '${DISTRO}' already exists (container present)"
+    elif [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+        # install이 실패했지만 "already exists"가 아닌 다른 에러인 경우
+        # distro가 실제로 설치되어 있을 수 있으니 재확인
+        if proot-distro list --installed 2>/dev/null | grep -qw "${DISTRO}"; then
+            log_ok "Distro '${DISTRO}' confirmed installed"
+        else
+            log_error "Failed to install ${DISTRO} distro"
+            exit 1
+        fi
+    else
+        log_ok "Distro '${DISTRO}' installed successfully"
+    fi
 fi
 
 # ─── 6. distro 내부에 Bun 설치 ───────────────────────────────

@@ -38,11 +38,21 @@ log_ok "Termux dependencies installed"
 
 # ─── 3. proot-distro distro 설치 ─────────────────────────────
 log_info "Installing ${DISTRO} distro via proot-distro..."
-if proot-distro list --installed 2>/dev/null | grep -q "^${DISTRO}$"; then
+if proot-distro list --installed 2>/dev/null | grep -qw "${DISTRO}"; then
     log_ok "Distro '${DISTRO}' is already installed"
 else
-    proot-distro install "${DISTRO}"
-    log_ok "Distro '${DISTRO}' installed successfully"
+    if proot-distro install "${DISTRO}" 2>&1 | tee /dev/stderr | grep -q "already exists"; then
+        log_ok "Distro '${DISTRO}' already exists (container present)"
+    elif [[ ${PIPESTATUS[0]} -ne 0 ]]; then
+        if proot-distro list --installed 2>/dev/null | grep -qw "${DISTRO}"; then
+            log_ok "Distro '${DISTRO}' confirmed installed"
+        else
+            log_error "Failed to install ${DISTRO} distro"
+            exit 1
+        fi
+    else
+        log_ok "Distro '${DISTRO}' installed successfully"
+    fi
 fi
 
 # ─── 4. distro 내부에 Bun 설치 ───────────────────────────────
