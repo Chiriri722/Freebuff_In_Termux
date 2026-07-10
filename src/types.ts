@@ -37,12 +37,7 @@ export interface CommandRunner {
 }
 
 /** CPU 아키텍처 타입 */
-export type Architecture =
-  | 'aarch64'
-  | 'arm'
-  | 'x86_64'
-  | 'i386'
-  | 'unknown';
+export type Architecture = 'aarch64' | 'arm' | 'x86_64' | 'i386' | 'unknown';
 
 /** proot-distro 설정 */
 export interface ProotDistroConfig {
@@ -101,7 +96,7 @@ export interface Spawner {
   spawn(
     command: string,
     args: string[],
-    options?: LaunchOptions
+    options?: LaunchOptions,
   ): Promise<SpawnResult>;
 }
 

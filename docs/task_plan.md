@@ -1,25 +1,35 @@
-# Task Plan: FreeBuff Termux — Phase 3 통합 & 문서
+# Task Plan: FreeBuff Termux — Phase 4 품질 & 자동화
 
 ## Goal
-FreeBuff 인터랙티브 런처 구현(3A), 추가 문서(3B), Hermes Agent 스킬 재작성(3C), Termux 특화 기능(3D)을 완료한다.
+경계 케이스 테스트(4A), CI/CD 파이프라인(4B), 린트/포맷팅(4C), Android 호환성 문서(4D)를 완료한다.
 
 ## Phases
 - [x] Phase 1: 프로젝트 구조 구축 (완료)
-- [x] Phase 2: 핵심 구현 — 유틸리티, proot 래퍼, 경로 브리지, 설치 스크립트 (51/51 passed)
-- [x] Phase 3A: FreeBuff 인터랙티브 런처 (freebuff-launcher.ts, spawn 기반)
-- [x] Phase 3B: 추가 문서 (CONTRIBUTING.md, CHANGELOG.md)
-- [x] Phase 3C: Hermes Agent 연동 스킬 재작성 (실제 API 기반)
-- [x] Phase 3D: Termux 특화 기능 (termux-features.ts)
-- [x] Phase 3-Verify: 빌드 + 테스트 검증 (67/67 passed, 7 suites)
+- [x] Phase 2: 핵심 구현 (51/51 passed)
+- [x] Phase 3: 통합 & 문서 (67/67 passed)
+- [x] Phase 4A: 경계 케이스 테스트 (edge-cases.test.ts — 30개 케이스)
+- [x] Phase 4B: CI/CD 파이프라인 (GitHub Actions — Node 18/20/22 매트릭스)
+- [x] Phase 4C: ESLint + Prettier 린트/포맷팅 (0 errors, all formatted)
+- [x] Phase 4D: Android 버전별 호환성 매트릭스 문서
+- [x] Phase 4-Verify: 빌드 + 테스트 + 린트 + 포맷팅 검증 (97/97 passed)
 
 ## Key Decisions
-- 런처는 Spawner 인터페이스 주입으로 테스트 가능 (execSync → spawn 전환)
-- stdio: 'inherit' 모드로 인터랙티브 실행, 'pipe' 모드로 프로그래밍 실행 지원
-- SIGINT/SIGTERM 시그널을 자식 프로세스에 전달하여 정상 종료 보장
-- 스킬은 별도 skill/ 디렉토리에 배치, .skill 패키징 구조 유지
+- ESLint flat config (eslint.config.js) 사용 — ESM 프로젝트 호환
+- CI 매트릭스: Node.js 18, 20, 22 (Jest 30 호환 버전)
+- 경계 케이스는 순수 함수에 집중 (Windows에서도 실행 가능)
 
 ## Errors Encountered
-(없음 — Phase 3에서 오류 없이 완료)
+- [prettier 포맷팅 불일치] Prettier 적용 후 13개 파일 포맷팅 변경 → `prettier --write`로 일괄 수정
+- [normalizePathForTermux trailing space] 테스트 예상값이 실제 동작과 불일치 → 세그먼트 내 공백은 보존됨(파일명에 공백 가능), 테스트 수정
+- [ESLint prefer-const] system-utils.ts에서 `let normalized`가 재할당되지 않음 → `const`로 변경
+- [ESLint 설치 불완전] npm install 타임아웃으로 eslint 바이너리 손상 → `npm install eslint@latest`로 재설치
 
 ## Status
-**Phase 3 완료 — 통합 & 문서 완료** — tsc 빌드 성공, 67/67 테스트 통과 (7 suites)
+**Phase 4 완료 — 품질 & 자동화 완료** — tsc 빌드 성공, 97/97 테스트 통과 (8 suites), ESLint 0 errors, Prettier all formatted
+
+## 전체 프로젝트 완료 요약
+- Phase 1: 프로젝트 구조 구축
+- Phase 2: 핵심 구현 (유틸리티, proot 래퍼, 경로 브리지, 설치 스크립트)
+- Phase 3: 통합 & 문서 (런처, Termux 특화 기능, 스킬, 문서)
+- Phase 4: 품질 & 자동화 (경계 케이스, CI/CD, 린트/포맷팅, 호환성 문서)
+- 총 97개 테스트, 8 test suites, 0 lint errors

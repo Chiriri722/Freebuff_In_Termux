@@ -26,7 +26,9 @@ describe('System utilities', () => {
     });
 
     test('should return false for non-existent command', () => {
-      expect(isCommandAvailable('this-command-does-not-exist-12345')).toBe(false);
+      expect(isCommandAvailable('this-command-does-not-exist-12345')).toBe(
+        false,
+      );
     });
   });
 
@@ -36,7 +38,9 @@ describe('System utilities', () => {
     });
 
     test('should expand tilde-slash path', () => {
-      expect(expandTilde('~/documents', '/home/user')).toBe('/home/user/documents');
+      expect(expandTilde('~/documents', '/home/user')).toBe(
+        '/home/user/documents',
+      );
     });
 
     test('should not modify non-tilde paths', () => {

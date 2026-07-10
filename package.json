@@ -8,7 +8,11 @@
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "lint": "eslint src/ tests/",
+    "lint:fix": "eslint src/ tests/ --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
   },
   "keywords": [
     "freebuff",
@@ -21,10 +25,14 @@
   "license": "MIT",
   "description": "FreeBuff (free Codebuff) Termux 호환 레이어 — B+C 하이브리드 전략 기반",
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@types/jest": "^30.0.0",
     "@types/node": "^26.1.1",
+    "eslint": "^10.6.0",
     "jest": "^30.4.2",
+    "prettier": "^3.0.0",
     "ts-jest": "^29.4.11",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.0.0"
   }
 }

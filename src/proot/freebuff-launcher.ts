@@ -28,7 +28,7 @@ const defaultSpawner: Spawner = {
   spawn(
     command: string,
     args: string[],
-    options?: LaunchOptions
+    options?: LaunchOptions,
   ): Promise<SpawnResult> {
     return new Promise((resolve, reject) => {
       const stdioMode = options?.stdio ?? 'inherit';
@@ -122,7 +122,7 @@ export class FreeBuffLauncher {
     distro: string,
     prootCwd: string,
     freebuffArgs: string[],
-    config: Partial<ProotDistroConfig> = {}
+    config: Partial<ProotDistroConfig> = {},
   ): [string, string[]] {
     const bindArgs = buildBindMountArgs(config);
     const userFlag = config.user ? ['--user', config.user] : [];
@@ -160,14 +160,14 @@ export class FreeBuffLauncher {
     distro: string,
     termuxCwd: string,
     args: string[] = [],
-    config: Partial<ProotDistroConfig> = {}
+    config: Partial<ProotDistroConfig> = {},
   ): Promise<SpawnResult> {
     const prootCwd = termuxToProot(termuxCwd, config);
     const [command, commandArgs] = this.buildCommand(
       distro,
       prootCwd,
       args,
-      config
+      config,
     );
 
     return this.spawner.spawn(command, commandArgs, {
@@ -193,14 +193,14 @@ export class FreeBuffLauncher {
     termuxCwd: string,
     args: string[] = [],
     config: Partial<ProotDistroConfig> = {},
-    timeout: number = 0
+    timeout: number = 0,
   ): Promise<SpawnResult> {
     const prootCwd = termuxToProot(termuxCwd, config);
     const [command, commandArgs] = this.buildCommand(
       distro,
       prootCwd,
       args,
-      config
+      config,
     );
 
     return this.spawner.spawn(command, commandArgs, {

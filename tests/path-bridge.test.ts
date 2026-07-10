@@ -14,7 +14,10 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
   describe('termuxToProot', () => {
     test('should map Termux home to proot home', () => {
       expect(
-        termuxToProot(TERMUX_HOME, { termuxHome: TERMUX_HOME, prootHome: PROOT_HOME })
+        termuxToProot(TERMUX_HOME, {
+          termuxHome: TERMUX_HOME,
+          prootHome: PROOT_HOME,
+        }),
       ).toBe(PROOT_HOME);
     });
 
@@ -23,7 +26,7 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
         termuxToProot(`${TERMUX_HOME}/project`, {
           termuxHome: TERMUX_HOME,
           prootHome: PROOT_HOME,
-        })
+        }),
       ).toBe(`${PROOT_HOME}/project`);
     });
 
@@ -32,7 +35,7 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
         termuxToProot('/storage/emulated/0/Documents', {
           termuxHome: TERMUX_HOME,
           prootHome: PROOT_HOME,
-        })
+        }),
       ).toBe('/storage/emulated/0/Documents');
     });
 
@@ -41,7 +44,7 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
         termuxToProot('/usr/bin/tool', {
           termuxHome: TERMUX_HOME,
           prootHome: PROOT_HOME,
-        })
+        }),
       ).toBe('/usr/bin/tool');
     });
 
@@ -50,7 +53,7 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
         termuxToProot(`${TERMUX_HOME}/./project/../app`, {
           termuxHome: TERMUX_HOME,
           prootHome: PROOT_HOME,
-        })
+        }),
       ).toBe(`${PROOT_HOME}/app`);
     });
   });
@@ -58,7 +61,10 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
   describe('prootToTermux', () => {
     test('should map proot home to Termux home', () => {
       expect(
-        prootToTermux(PROOT_HOME, { termuxHome: TERMUX_HOME, prootHome: PROOT_HOME })
+        prootToTermux(PROOT_HOME, {
+          termuxHome: TERMUX_HOME,
+          prootHome: PROOT_HOME,
+        }),
       ).toBe(TERMUX_HOME);
     });
 
@@ -67,7 +73,7 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
         prootToTermux(`${PROOT_HOME}/project`, {
           termuxHome: TERMUX_HOME,
           prootHome: PROOT_HOME,
-        })
+        }),
       ).toBe(`${TERMUX_HOME}/project`);
     });
 
@@ -76,7 +82,7 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
         prootToTermux('/storage/emulated/0/Downloads', {
           termuxHome: TERMUX_HOME,
           prootHome: PROOT_HOME,
-        })
+        }),
       ).toBe('/storage/emulated/0/Downloads');
     });
 
@@ -105,28 +111,28 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
 
   describe('isTermuxHomePath', () => {
     test('should return true for Termux home itself', () => {
-      expect(
-        isTermuxHomePath(TERMUX_HOME, { termuxHome: TERMUX_HOME })
-      ).toBe(true);
+      expect(isTermuxHomePath(TERMUX_HOME, { termuxHome: TERMUX_HOME })).toBe(
+        true,
+      );
     });
 
     test('should return true for Termux home subdirectory', () => {
       expect(
-        isTermuxHomePath(`${TERMUX_HOME}/project`, { termuxHome: TERMUX_HOME })
+        isTermuxHomePath(`${TERMUX_HOME}/project`, { termuxHome: TERMUX_HOME }),
       ).toBe(true);
     });
 
     test('should return false for non-Termux-home paths', () => {
-      expect(
-        isTermuxHomePath('/usr/bin', { termuxHome: TERMUX_HOME })
-      ).toBe(false);
+      expect(isTermuxHomePath('/usr/bin', { termuxHome: TERMUX_HOME })).toBe(
+        false,
+      );
     });
   });
 
   describe('getProotRootPath', () => {
     test('should return correct path with explicit prefix', () => {
       expect(getProotRootPath('ubuntu', PREFIX)).toBe(
-        `${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu`
+        `${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu`,
       );
     });
   });

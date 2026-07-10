@@ -16,8 +16,7 @@ const TERMUX_PREFIX_PATTERN = '/data/data/com.termux';
  */
 export const isTermux = (): boolean => {
   return (
-    !!process.env.PREFIX &&
-    process.env.PREFIX.startsWith(TERMUX_PREFIX_PATTERN)
+    !!process.env.PREFIX && process.env.PREFIX.startsWith(TERMUX_PREFIX_PATTERN)
   );
 };
 

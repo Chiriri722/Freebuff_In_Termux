@@ -22,7 +22,11 @@ const DEFAULT_PROOT_HOME = '/root';
 /**
  * 설정에서 누락된 기본값을 채운 완전한 설정을 반환한다.
  */
-const resolveConfig = (config: Partial<ProotDistroConfig>): Required<Pick<ProotDistroConfig, 'distro' | 'user' | 'termuxHome' | 'prootHome'>> & { bindMounts: string[] } => {
+const resolveConfig = (
+  config: Partial<ProotDistroConfig>,
+): Required<
+  Pick<ProotDistroConfig, 'distro' | 'user' | 'termuxHome' | 'prootHome'>
+> & { bindMounts: string[] } => {
   return {
     distro: config.distro ?? 'ubuntu',
     user: config.user ?? 'root',
@@ -61,7 +65,7 @@ export const getProotRootPath = (distro: string, prefix?: string): string => {
  */
 export const termuxToProot = (
   termuxPath: string,
-  config: Partial<ProotDistroConfig> = {}
+  config: Partial<ProotDistroConfig> = {},
 ): string => {
   const { termuxHome, prootHome } = resolveConfig(config);
   const normalized = normalizePathForTermux(termuxPath);
@@ -98,7 +102,7 @@ export const termuxToProot = (
  */
 export const prootToTermux = (
   prootPath: string,
-  config: Partial<ProotDistroConfig> = {}
+  config: Partial<ProotDistroConfig> = {},
 ): string => {
   const { termuxHome, prootHome } = resolveConfig(config);
   const normalized = normalizePathForTermux(prootPath);
@@ -127,7 +131,7 @@ export const prootToTermux = (
  * @returns bind mount 인자 배열 (예: ['--bind', '/storage/emulated/0'])
  */
 export const buildBindMountArgs = (
-  config: Partial<ProotDistroConfig> = {}
+  config: Partial<ProotDistroConfig> = {},
 ): string[] => {
   const { bindMounts } = resolveConfig(config);
   const args: string[] = [];
@@ -152,7 +156,7 @@ export const buildBindMountArgs = (
  */
 export const isTermuxHomePath = (
   termuxPath: string,
-  config: Partial<ProotDistroConfig> = {}
+  config: Partial<ProotDistroConfig> = {},
 ): boolean => {
   const { termuxHome } = resolveConfig(config);
   const normalized = normalizePathForTermux(termuxPath);

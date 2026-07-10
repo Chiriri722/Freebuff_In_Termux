@@ -165,7 +165,8 @@ export const checkOomRisk = (): OomRiskAssessment => {
       level: 'danger',
       recommendedFreeKB: RECOMMENDED_FREE_KB,
       currentFreeKB,
-      message: `Critical: Only ${Math.round(currentFreeKB / 1024)}MB free. ` +
+      message:
+        `Critical: Only ${Math.round(currentFreeKB / 1024)}MB free. ` +
         `FreeBuff will likely be killed by OOM Killer. Close other apps first.`,
     };
   }
@@ -175,7 +176,8 @@ export const checkOomRisk = (): OomRiskAssessment => {
       level: 'caution',
       recommendedFreeKB: RECOMMENDED_FREE_KB,
       currentFreeKB,
-      message: `Caution: ${Math.round(currentFreeKB / 1024)}MB free. ` +
+      message:
+        `Caution: ${Math.round(currentFreeKB / 1024)}MB free. ` +
         `Recommended ${Math.round(RECOMMENDED_FREE_KB / 1024)}MB. May experience OOM kills.`,
     };
   }

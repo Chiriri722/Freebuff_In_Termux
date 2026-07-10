@@ -86,7 +86,7 @@ export class ProotDistroManager {
    */
   isDistroInstalled(distro: string): boolean {
     const result = this.runner.exec(
-      `proot-distro list --installed 2>/dev/null | grep -q "^${distro}$"`
+      `proot-distro list --installed 2>/dev/null | grep -q "^${distro}$"`,
     );
     return result.exitCode === 0;
   }
@@ -132,7 +132,7 @@ export class ProotDistroManager {
   execInDistro(
     distro: string,
     command: string,
-    config: Partial<ProotDistroConfig> = {}
+    config: Partial<ProotDistroConfig> = {},
   ): ExecResult {
     if (!this.isDistroInstalled(distro)) {
       return {
@@ -152,7 +152,10 @@ export class ProotDistroManager {
    * distro 내부에 Bun 런타임을 설치한다.
    */
   installBunInDistro(distro: string): ExecResult {
-    return this.execInDistro(distro, 'curl -fsSL https://bun.sh/install | bash');
+    return this.execInDistro(
+      distro,
+      'curl -fsSL https://bun.sh/install | bash',
+    );
   }
 
   /**
@@ -186,7 +189,7 @@ export class ProotDistroManager {
     distro: string,
     termuxCwd: string,
     args: string[] = [],
-    config: Partial<ProotDistroConfig> = {}
+    config: Partial<ProotDistroConfig> = {},
   ): FreeBuffRunResult {
     const prootCwd = termuxToProot(termuxCwd, config);
     const escapedArgs = args

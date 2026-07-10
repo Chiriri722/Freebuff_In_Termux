@@ -75,9 +75,7 @@ export const getStoragePath = (): string => {
  */
 export const isCommandAvailable = (command: string): boolean => {
   const checkCmd =
-    process.platform === 'win32'
-      ? `where ${command}`
-      : `command -v ${command}`;
+    process.platform === 'win32' ? `where ${command}` : `command -v ${command}`;
   try {
     execSync(checkCmd, {
       encoding: 'utf-8',
@@ -129,7 +127,7 @@ export const expandTilde = (path: string, home?: string): string => {
  */
 export const normalizePathForTermux = (path: string): string => {
   // 틸다 확장
-  let normalized = expandTilde(path);
+  const normalized = expandTilde(path);
 
   // 절대 경로가 아니면 그대로 반환 (상대 경로는 정규화하지 않음)
   if (!normalized.startsWith('/')) {

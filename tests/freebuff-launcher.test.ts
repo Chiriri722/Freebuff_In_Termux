@@ -3,9 +3,13 @@ import type { Spawner, SpawnResult, LaunchOptions } from '../src/types.js';
 
 /** 테스트용 mock Spawner를 생성한다. */
 const createMockSpawner = (
-  results: SpawnResult[] = []
-): { spawner: Spawner; calls: { command: string; args: string[]; options?: LaunchOptions }[] } => {
-  const calls: { command: string; args: string[]; options?: LaunchOptions }[] = [];
+  results: SpawnResult[] = [],
+): {
+  spawner: Spawner;
+  calls: { command: string; args: string[]; options?: LaunchOptions }[];
+} => {
+  const calls: { command: string; args: string[]; options?: LaunchOptions }[] =
+    [];
   let callIndex = 0;
   return {
     calls,
@@ -13,7 +17,7 @@ const createMockSpawner = (
       async spawn(
         command: string,
         args: string[],
-        options?: LaunchOptions
+        options?: LaunchOptions,
       ): Promise<SpawnResult> {
         calls.push({ command, args, options });
         const result = results[callIndex++] ?? {
@@ -40,7 +44,7 @@ describe('FreeBuffLauncher', () => {
         'ubuntu',
         '/root/my-project',
         [],
-        config
+        config,
       );
       expect(cmd).toBe('proot-distro');
       expect(args[0]).toBe('login');
@@ -51,7 +55,12 @@ describe('FreeBuffLauncher', () => {
 
     test('should include bind mount args', () => {
       const launcher = new FreeBuffLauncher(createMockSpawner().spawner);
-      const [, args] = launcher.buildCommand('ubuntu', '/root/proj', [], config);
+      const [, args] = launcher.buildCommand(
+        'ubuntu',
+        '/root/proj',
+        [],
+        config,
+      );
       expect(args).toContain('--bind');
       expect(args).toContain('/storage/emulated/0');
     });
@@ -68,7 +77,12 @@ describe('FreeBuffLauncher', () => {
 
     test('should include freebuff args in bash command', () => {
       const launcher = new FreeBuffLauncher(createMockSpawner().spawner);
-      const [, args] = launcher.buildCommand('ubuntu', '/root/proj', ['--help'], config);
+      const [, args] = launcher.buildCommand(
+        'ubuntu',
+        '/root/proj',
+        ['--help'],
+        config,
+      );
       const bashCmd = args[args.length - 1];
       expect(bashCmd).toContain('freebuff');
       expect(bashCmd).toContain("'--help'");
@@ -76,7 +90,12 @@ describe('FreeBuffLauncher', () => {
 
     test('should set BUN_INSTALL and PATH in bash command', () => {
       const launcher = new FreeBuffLauncher(createMockSpawner().spawner);
-      const [, args] = launcher.buildCommand('ubuntu', '/root/proj', [], config);
+      const [, args] = launcher.buildCommand(
+        'ubuntu',
+        '/root/proj',
+        [],
+        config,
+      );
       const bashCmd = args[args.length - 1];
       expect(bashCmd).toContain('BUN_INSTALL');
       expect(bashCmd).toContain('$BUN_INSTALL/bin:$PATH');
@@ -112,7 +131,12 @@ describe('FreeBuffLauncher', () => {
         { exitCode: 0, signal: null, stdout: 'output', stderr: '' },
       ]);
       const launcher = new FreeBuffLauncher(mock.spawner);
-      const result = await launcher.run('ubuntu', `${TERMUX_HOME}/proj`, [], config);
+      const result = await launcher.run(
+        'ubuntu',
+        `${TERMUX_HOME}/proj`,
+        [],
+        config,
+      );
       expect(mock.calls[0].options?.stdio).toBe('pipe');
       expect(result.stdout).toBe('output');
     });

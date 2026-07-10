@@ -130,4 +130,3 @@ const isMainModule =
 if (isMainModule) {
   run();
 }
-
