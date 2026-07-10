@@ -38,20 +38,18 @@ log_ok "Termux dependencies installed"
 
 # ─── 3. proot-distro distro 설치 ─────────────────────────────
 log_info "Installing ${DISTRO} distro via proot-distro..."
-if proot-distro list --installed 2>/dev/null | grep -qw "${DISTRO}"; then
+DISTRO_ROOTFS="${PREFIX}/var/lib/proot-distro/installed-rootfs/${DISTRO}"
+
+if [[ -d "${DISTRO_ROOTFS}" ]]; then
     log_ok "Distro '${DISTRO}' is already installed"
 else
-    if proot-distro install "${DISTRO}" 2>&1 | tee /dev/stderr | grep -q "already exists"; then
-        log_ok "Distro '${DISTRO}' already exists (container present)"
-    elif [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-        if proot-distro list --installed 2>/dev/null | grep -qw "${DISTRO}"; then
-            log_ok "Distro '${DISTRO}' confirmed installed"
-        else
-            log_error "Failed to install ${DISTRO} distro"
-            exit 1
-        fi
-    else
+    proot-distro install "${DISTRO}" 2>&1 || true
+    if [[ -d "${DISTRO_ROOTFS}" ]]; then
         log_ok "Distro '${DISTRO}' installed successfully"
+    else
+        log_error "Failed to install ${DISTRO} distro"
+        log_error "Try manually: proot-distro install ${DISTRO}"
+        exit 1
     fi
 fi
 

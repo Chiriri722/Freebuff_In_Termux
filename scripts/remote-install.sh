@@ -112,26 +112,22 @@ log_ok "TypeScript build complete (dist/index.js)"
 # ─── 5. proot-distro distro 설치 ─────────────────────────────
 log_info "Step 5/9: Installing ${DISTRO} distro via proot-distro..."
 
-# distro 설치 여부 확인:
-# proot-distro list --installed 출력에서 distro 이름이 포함되어 있는지 검사
-# (출력 포맷이 버전마다 다를 수 있으므로 단순 grep 사용)
-if proot-distro list --installed 2>/dev/null | grep -qw "${DISTRO}"; then
-    log_ok "Distro '${DISTRO}' is already installed"
+# distro 설치 여부 확인: rootfs 디렉토리 존재 여부로 판단 (가장 신뢰 가능)
+DISTRO_ROOTFS="${PREFIX}/var/lib/proot-distro/installed-rootfs/${DISTRO}"
+
+if [[ -d "${DISTRO_ROOTFS}" ]]; then
+    log_ok "Distro '${DISTRO}' is already installed (${DISTRO_ROOTFS})"
 else
-    # install 시도 — 이미 존재하면 에러가 나므로 별도 처리
-    if proot-distro install "${DISTRO}" 2>&1 | tee /dev/stderr | grep -q "already exists"; then
-        log_ok "Distro '${DISTRO}' already exists (container present)"
-    elif [[ ${PIPESTATUS[0]} -ne 0 ]]; then
-        # install이 실패했지만 "already exists"가 아닌 다른 에러인 경우
-        # distro가 실제로 설치되어 있을 수 있으니 재확인
-        if proot-distro list --installed 2>/dev/null | grep -qw "${DISTRO}"; then
-            log_ok "Distro '${DISTRO}' confirmed installed"
-        else
-            log_error "Failed to install ${DISTRO} distro"
-            exit 1
-        fi
-    else
+    # install 시도 — 실패해도 set -e로 종료되지 않도록 || true
+    proot-distro install "${DISTRO}" 2>&1 || true
+
+    # install 후 rootfs 디렉토리가 생겼는지 확인
+    if [[ -d "${DISTRO_ROOTFS}" ]]; then
         log_ok "Distro '${DISTRO}' installed successfully"
+    else
+        log_error "Failed to install ${DISTRO} distro"
+        log_error "Try manually: proot-distro install ${DISTRO}"
+        exit 1
     fi
 fi
 
