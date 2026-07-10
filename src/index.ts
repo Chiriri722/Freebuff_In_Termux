@@ -35,6 +35,20 @@ import {
 // proot 래퍼 (Phase 2B)
 import { ProotDistroManager } from './proot/proot-wrapper.js';
 
+// FreeBuff 런처 (Phase 3A)
+import { FreeBuffLauncher } from './proot/freebuff-launcher.js';
+
+// Termux 특화 기능 (Phase 3D)
+import {
+  acquireWakeLock,
+  releaseWakeLock,
+  isWakeLockAvailable,
+  setupStorage,
+  isStorageSetup,
+  getMemoryInfo,
+  checkOomRisk,
+} from './utils/termux-features.js';
+
 // 타입 재수출
 export type {
   CommandRunner,
@@ -43,6 +57,11 @@ export type {
   Architecture,
   ProotDistroConfig,
   FreeBuffRunResult,
+  Spawner,
+  SpawnResult,
+  LaunchOptions,
+  MemoryInfo,
+  OomRiskAssessment,
 } from './types.js';
 
 // 유틸리티 재수출
@@ -70,6 +89,20 @@ export {
 
 // proot 래퍼 재수출
 export { ProotDistroManager };
+
+// FreeBuff 런처 재수출
+export { FreeBuffLauncher };
+
+// Termux 특화 기능 재수출
+export {
+  acquireWakeLock,
+  releaseWakeLock,
+  isWakeLockAvailable,
+  setupStorage,
+  isStorageSetup,
+  getMemoryInfo,
+  checkOomRisk,
+};
 
 /**
  * FreeBuff Termux 변환 레이어의 기본 진입 함수.

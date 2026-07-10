@@ -1,23 +1,25 @@
-# Task Plan: FreeBuff Termux — Phase 2 핵심 구현
+# Task Plan: FreeBuff Termux — Phase 3 통합 & 문서
 
 ## Goal
-B+C 하이브리드 전략의 핵심 로직을 구현한다: 추가 시스템 유틸리티(2A), proot-distro 래퍼(2B), 경로 브리지(2C), 설치 스크립트(2D).
+FreeBuff 인터랙티브 런처 구현(3A), 추가 문서(3B), Hermes Agent 스킬 재작성(3C), Termux 특화 기능(3D)을 완료한다.
 
 ## Phases
-- [x] Phase 1: 프로젝트 구조 구축 (이전 세션 완료)
-- [x] Phase 2A: 추가 유틸리티 함수 구현 (system-utils.ts)
-- [x] Phase 2B: proot-distro 래퍼 모듈 (proot-wrapper.ts)
-- [x] Phase 2C: 경로 브리지 모듈 (path-bridge.ts)
-- [x] Phase 2D: 설치 스크립트 (install.sh)
-- [x] Phase 2-Verify: 빌드 + 테스트 검증 (51/51 passed)
+- [x] Phase 1: 프로젝트 구조 구축 (완료)
+- [x] Phase 2: 핵심 구현 — 유틸리티, proot 래퍼, 경로 브리지, 설치 스크립트 (51/51 passed)
+- [x] Phase 3A: FreeBuff 인터랙티브 런처 (freebuff-launcher.ts, spawn 기반)
+- [x] Phase 3B: 추가 문서 (CONTRIBUTING.md, CHANGELOG.md)
+- [x] Phase 3C: Hermes Agent 연동 스킬 재작성 (실제 API 기반)
+- [x] Phase 3D: Termux 특화 기능 (termux-features.ts)
+- [x] Phase 3-Verify: 빌드 + 테스트 검증 (67/67 passed, 7 suites)
 
 ## Key Decisions
-- CommandRunner 인터페이스 주입으로 proot-wrapper 테스트 가능성 확보
-- 순수 함수(문자열 조작)는 path-bridge에, side-effect 함수는 system-utils에 분리
-- install.sh는 Termux 전용 (shebang: #!/data/data/com.termux/files/usr/bin/bash)
+- 런처는 Spawner 인터페이스 주입으로 테스트 가능 (execSync → spawn 전환)
+- stdio: 'inherit' 모드로 인터랙티브 실행, 'pipe' 모드로 프로그래밍 실행 지원
+- SIGINT/SIGTERM 시그널을 자식 프로세스에 전달하여 정상 종료 보장
+- 스킬은 별도 skill/ 디렉토리에 배치, .skill 패키징 구조 유지
 
 ## Errors Encountered
-- [isCommandAvailable Windows 실패] `command -v`가 Windows에서 동작하지 않음 → `process.platform` 분기로 `where`/`command -v` 자동 선택하여 해결
+(없음 — Phase 3에서 오류 없이 완료)
 
 ## Status
-**Phase 2 완료 — 핵심 구현 완료** — tsc 빌드 성공, 51/51 테스트 통과
+**Phase 3 완료 — 통합 & 문서 완료** — tsc 빌드 성공, 67/67 테스트 통과 (7 suites)
