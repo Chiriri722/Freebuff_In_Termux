@@ -142,9 +142,13 @@ fi
 # ─── 8. 래퍼 스크립트 생성 ───────────────────────────────────
 log_info "Step 8/9: Creating FreeBuff wrapper script..."
 mkdir -p "${WRAPPER_DIR}"
-cat > "${WRAPPER_PATH}" << 'WRAPPER_EOF'
+WRAPPER_EOF=$(cat << 'WRAPPER_INNER'
 #!/data/data/com.termux/files/usr/bin/bash
 # FreeBuff Termux Wrapper — proot-distro 환경에서 freebuff 실행
+#
+# 핵심: proot 내부에서도 process.platform이 'android'로 보고되어
+# freebuff 런처가 바이너리 다운로드를 거부하는 문제를 해결하기 위해
+# OVERRIDE_PLATFORM=linux 환경 변수를 주입한다.
 set -euo pipefail
 DISTRO="${FREEBUFF_PROOT_DISTRO:-ubuntu}"
 PROOT_LOGIN="proot-distro login --user root --bind /storage/emulated/0"
@@ -159,9 +163,11 @@ else
     PROOT_CWD="${CURRENT_DIR}"
 fi
 exec ${PROOT_LOGIN} "${DISTRO}" -- bash -lc \
-    "export BUN_INSTALL=\"\$HOME/.bun\" && export PATH=\"\$BUN_INSTALL/bin:\$PATH\" && cd '${PROOT_CWD}' && freebuff \"\$@\"" \
+    "export BUN_INSTALL=\"\$HOME/.bun\" && export PATH=\"\$BUN_INSTALL/bin:\$PATH\" && export OVERRIDE_PLATFORM=linux && cd '${PROOT_CWD}' && freebuff \"\$@\"" \
     -- "$@"
-WRAPPER_EOF
+WRAPPER_INNER
+)
+echo "${WRAPPER_EOF}" > "${WRAPPER_PATH}"
 chmod +x "${WRAPPER_PATH}"
 log_ok "Wrapper script created at ${WRAPPER_PATH}"
 
