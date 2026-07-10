@@ -25,7 +25,9 @@ fi
 log_ok "Running in Termux (PREFIX: ${PREFIX})"
 
 # ─── 2. Termux 패키지 의존성 설치 ────────────────────────────
-log_info "Installing Termux dependencies..."
+log_info "Preparing Termux packages..."
+dpkg --configure -a 2>/dev/null || true
+pkg upgrade -y 2>/dev/null || true
 pkg update -y
 pkg install -y proot-distro nodejs git curl
 if ! command -v proot-distro &>/dev/null; then

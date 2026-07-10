@@ -57,11 +57,28 @@ fi
 log_ok "Running in Termux (PREFIX: ${PREFIX})"
 
 # ─── 2. Termux 패키지 의존성 설치 ────────────────────────────
-log_info "Step 2/9: Installing Termux dependencies..."
-pkg update -y >/dev/null 2>&1
+log_info "Step 2/9: Preparing Termux packages..."
+
+# 2-1. dpkg 손상 상태 복구 (이전 설치 중단 시 half-configured 잔존 해결)
+log_info "  Running dpkg --configure -a (fix broken state)..."
+dpkg --configure -a 2>/dev/null || true
+
+# 2-2. 전체 패키지 업그레이드 (libc++ 등 라이브러리 버전 불일치 해결)
+#      ffmpeg/libplacebo 링크 에러 등 부분 업데이트 문제를 사전 방지
+log_info "  Running pkg upgrade (sync all package versions)..."
+pkg upgrade -y 2>/dev/null || true
+
+# 2-3. 패키지 목록 업데이트
+log_info "  Running pkg update..."
+pkg update -y
+
+# 2-4. 의존성 설치
+log_info "  Installing required packages..."
 pkg install -y proot-distro nodejs git curl
+
 if ! command -v proot-distro &>/dev/null; then
     log_error "Failed to install proot-distro."
+    log_error "Try manually: dpkg --configure -a && pkg upgrade -y && pkg install proot-distro"
     exit 1
 fi
 if ! command -v node &>/dev/null; then
