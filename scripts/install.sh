@@ -38,7 +38,7 @@ log_ok "Termux dependencies installed"
 
 # ─── 3. proot-distro distro 설치 ─────────────────────────────
 log_info "Installing ${DISTRO} distro via proot-distro..."
-DISTRO_ROOTFS="${PREFIX}/var/lib/proot-distro/installed-rootfs/${DISTRO}"
+DISTRO_ROOTFS="${PREFIX}/var/lib/proot-distro/containers/${DISTRO}/rootfs"
 
 if [[ -d "${DISTRO_ROOTFS}" ]]; then
     log_ok "Distro '${DISTRO}' is already installed"
@@ -55,35 +55,52 @@ fi
 
 # ─── 4. distro 내부에 Bun 설치 ───────────────────────────────
 log_info "Installing Bun runtime inside ${DISTRO}..."
-BUN_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- bash -lc 'command -v bun' 2>/dev/null || true)
+BUN_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc 'command -v bun' 2>/dev/null || true)
 if [[ -n "${BUN_CHECK}" ]]; then
     log_ok "Bun is already installed in ${DISTRO}"
 else
-    ${PROOT_LOGIN} "${DISTRO}" -- bash -lc 'curl -fsSL https://bun.sh/install | bash'
+    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc 'curl -fsSL https://bun.sh/install | bash'
     log_ok "Bun installed in ${DISTRO}"
 fi
 
-# ─── 5. distro 내부에 FreeBuff 설치 ──────────────────────────
+# ─── 5. distro 내부에 Node.js 설치 ───────────────────────────
+log_info "Installing Node.js for freebuff launcher..."
+NODE_VERSION="v22.17.1"
+NODE_URL="https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-arm64.tar.gz"
+NODE_TARBALL="${HOME}/node.tar.gz"
+
+if ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc '/usr/local/bin/node --version' 2>/dev/null; then
+    log_ok "Node.js is already installed in ${DISTRO}"
+else
+    curl -fsSL "${NODE_URL}" -o "${NODE_TARBALL}"
+    cp "${NODE_TARBALL}" "${DISTRO_ROOTFS}/tmp/node.tar.gz"
+    rm "${NODE_TARBALL}"
+    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc \
+        'tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 && rm /tmp/node.tar.gz'
+    log_ok "Node.js ${NODE_VERSION} installed in ${DISTRO}"
+fi
+
+# ─── 6. distro 내부에 FreeBuff 설치 ──────────────────────────
 log_info "Installing FreeBuff CLI inside ${DISTRO}..."
-FB_CMD='export BUN_INSTALL="$HOME/.bun" && export PATH="$BUN_INSTALL/bin:$PATH"'
-FREEBUFF_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- bash -lc "${FB_CMD} && command -v freebuff" 2>/dev/null || true)
-if [[ -n "${FREEBUFF_CHECK}" ]]; then
+FB_PATH='/usr/local/bin:/usr/bin:/bin:/root/.bun/bin'
+FB_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc "export PATH=${FB_PATH}:\$PATH && command -v freebuff" 2>/dev/null || true)
+if [[ -n "${FB_CHECK}" ]]; then
     log_ok "FreeBuff is already installed in ${DISTRO}"
 else
-    ${PROOT_LOGIN} "${DISTRO}" -- bash -lc "${FB_CMD} && bun install -g freebuff"
+    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc "export PATH=${FB_PATH}:\$PATH && bun install -g freebuff"
     log_ok "FreeBuff installed in ${DISTRO}"
 fi
 
-# ─── 6. 래퍼 스크립트 생성 ───────────────────────────────────
+# ─── 7. 래퍼 스크립트 생성 ───────────────────────────────────
 log_info "Creating FreeBuff wrapper script..."
 mkdir -p "${WRAPPER_DIR}"
-WRAPPER_EOF=$(cat << 'WRAPPER_INNER'
+cat > "${WRAPPER_PATH}" << 'WRAPPER_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # FreeBuff Termux Wrapper — proot-distro 환경에서 freebuff 실행
 #
-# 핵심: proot 내부에서도 process.platform이 'android'로 보고되어
-# freebuff 런처가 바이너리 다운로드를 거부하는 문제를 해결하기 위해
-# OVERRIDE_PLATFORM=linux 환경 변수를 주입한다.
+# 핵심 설정:
+# - OVERRIDE_PLATFORM=linux: proot 내부에서도 freebuff가 linux-arm64 바이너리를 다운로드
+# - PATH: /usr/local/bin(Node.js) /usr/bin:/bin(기본 유틸) /root/.bun/bin(Bun+freebuff)
 set -euo pipefail
 DISTRO="${FREEBUFF_PROOT_DISTRO:-ubuntu}"
 PROOT_LOGIN="proot-distro login --user root --bind /storage/emulated/0"
@@ -97,12 +114,10 @@ elif [[ "${CURRENT_DIR}" == /storage/* ]]; then
 else
     PROOT_CWD="${CURRENT_DIR}"
 fi
-exec ${PROOT_LOGIN} "${DISTRO}" -- bash -lc \
-    "export BUN_INSTALL=\"\$HOME/.bun\" && export PATH=\"\$BUN_INSTALL/bin:\$PATH\" && export OVERRIDE_PLATFORM=linux && cd '${PROOT_CWD}' && freebuff \"\$@\"" \
+exec ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc \
+    "export PATH=/usr/local/bin:/usr/bin:/bin:/root/.bun/bin:\$PATH && export OVERRIDE_PLATFORM=linux && cd '${PROOT_CWD}' && freebuff \"\$@\"" \
     -- "$@"
-WRAPPER_INNER
-)
-echo "${WRAPPER_EOF}" > "${WRAPPER_PATH}"
+WRAPPER_EOF
 chmod +x "${WRAPPER_PATH}"
 log_ok "Wrapper script created at ${WRAPPER_PATH}"
 

@@ -38,7 +38,7 @@ const resolveConfig = (
 
 /**
  * proot-distro의 설치 경로(루트 파일 시스템)를 반환한다.
- * proot-distro는 $PREFIX/var/lib/proot-distro/installed-rootfs/<distro>에 설치된다.
+ * proot-distro는 $PREFIX/var/lib/proot-distro/containers/<distro>/rootfs에 설치된다.
  *
  * @param distro - distro 이름
  * @param prefix - Termux PREFIX (기본값: process.env.PREFIX)
@@ -46,7 +46,7 @@ const resolveConfig = (
  */
 export const getProotRootPath = (distro: string, prefix?: string): string => {
   const termuxPrefix = prefix ?? process.env.PREFIX ?? DEFAULT_TERMUX_HOME;
-  return `${termuxPrefix}/var/lib/proot-distro/installed-rootfs/${distro}`;
+  return `${termuxPrefix}/var/lib/proot-distro/containers/${distro}/rootfs`;
 };
 
 /**

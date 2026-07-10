@@ -132,7 +132,7 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
   describe('getProotRootPath', () => {
     test('should return correct path with explicit prefix', () => {
       expect(getProotRootPath('ubuntu', PREFIX)).toBe(
-        `${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu`,
+        `${PREFIX}/var/lib/proot-distro/containers/ubuntu/rootfs`,
       );
     });
   });
