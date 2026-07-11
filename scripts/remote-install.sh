@@ -17,7 +17,7 @@
 #   6. distro 내부에 Bun 런타임 설치
 #   7. distro 내부에 Node.js 설치 (freebuff 런처용)
 #   8. distro 내부에 FreeBuff CLI 설치
-#   9. 래퍼 스크립트 생성 (~/.local/bin/freebuff)
+#   9. xdg-open 브리지 + 래퍼 스크립트 생성
 #  10. PATH 등록
 # ============================================================================
 set -euo pipefail
@@ -172,16 +172,37 @@ else
     log_ok "FreeBuff installed in ${DISTRO}"
 fi
 
-# ─── 9. 래퍼 스크립트 생성 ───────────────────────────────────
-log_info "Step 9/9: Creating FreeBuff wrapper script..."
+# ─── 9. xdg-open 브리지 + 래퍼 스크립트 생성 ─────────────────
+log_info "Step 9/10: Creating xdg-open bridge and FreeBuff wrapper..."
 mkdir -p "${WRAPPER_DIR}"
+
+# 9-1. xdg-open 브리지 스크립트를 proot rootfs에 설치
+# FreeBuff 바이너리가 로그인 URL을 열 때 xdg-open을 호출하면
+# 이 스크립트가 URL을 ~/.freebuff-url-to-open에 기록
+cat > "${DISTRO_ROOTFS}/usr/local/bin/xdg-open" << 'XDG_EOF'
+#!/bin/bash
+# xdg-open bridge — proot 내부에서 Termux 브라우저로 URL 전달
+# FreeBuff가 xdg-open을 호출하면 URL을 절대 경로 파일에 기록
+TERMUX_HOME="/data/data/com.termux/files/home"
+URL_FILE="${TERMUX_HOME}/.freebuff-url-to-open"
+if [[ $# -lt 1 ]]; then exit 1; fi
+URL="$1"
+echo "${URL}" > "${URL_FILE}" 2>/dev/null || {
+    echo "  🔑 LOGIN URL (manual copy): ${URL}"
+    exit 0
+}
+echo "  🔑 LOGIN URL (auto-opening browser...): ${URL}"
+exit 0
+XDG_EOF
+chmod +x "${DISTRO_ROOTFS}/usr/local/bin/xdg-open"
+log_ok "xdg-open bridge installed in proot"
+
+# 9-2. FreeBuff 래퍼 스크립트 생성 (백그라운드 URL 감시자 포함)
 cat > "${WRAPPER_PATH}" << 'WRAPPER_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # FreeBuff Termux Wrapper — proot-distro 환경에서 freebuff 실행
-#
-# 핵심 설정:
-# - OVERRIDE_PLATFORM=linux: proot 내부에서도 freebuff가 linux-arm64 바이너리를 다운로드
-# - PATH: /usr/local/bin(Node.js) /usr/bin:/bin(기본 유틸) /root/.bun/bin(Bun+freebuff)
+# - OVERRIDE_PLATFORM=linux: linux-arm64 바이너리 다운로드
+# - xdg-open 브리지: 로그인 URL을 Termux 브라우저로 전달
 set -euo pipefail
 DISTRO="${FREEBUFF_PROOT_DISTRO:-ubuntu}"
 PROOT_LOGIN="proot-distro login --user root --bind /storage/emulated/0"
@@ -195,15 +216,46 @@ elif [[ "${CURRENT_DIR}" == /storage/* ]]; then
 else
     PROOT_CWD="${CURRENT_DIR}"
 fi
-exec ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc \
+
+# URL 브리지 파일
+URL_BRIDGE_FILE="${TERMUX_HOME}/.freebuff-url-to-open"
+rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
+
+# 백그라운드 URL 감시자: xdg-open이 파일에 URL을 기록하면 termux-open-url로 브라우저 열기
+url_watcher() {
+    local count=0
+    while [[ ${count} -lt 3600 ]]; do
+        if [[ -f "${URL_BRIDGE_FILE}" ]]; then
+            local url
+            url=$(cat "${URL_BRIDGE_FILE}" 2>/dev/null || true)
+            if [[ -n "${url}" ]]; then
+                echo -e "\n\033[0;34m[INFO]\033[0m Opening browser for login..."
+                termux-open-url "${url}" 2>/dev/null || true
+                rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
+            fi
+        fi
+        sleep 0.5
+        ((count++))
+    done
+    rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
+}
+url_watcher &
+WATCHER_PID=$!
+cleanup() {
+    kill "${WATCHER_PID}" 2>/dev/null || true
+    rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+exec ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -c \
     "export PATH=/usr/local/bin:/usr/bin:/bin:/root/.bun/bin:\$PATH && export OVERRIDE_PLATFORM=linux && cd '${PROOT_CWD}' && freebuff \"\$@\"" \
     -- "$@"
 WRAPPER_EOF
 chmod +x "${WRAPPER_PATH}"
 log_ok "Wrapper script created at ${WRAPPER_PATH}"
 
-# ─── 9. PATH 등록 ────────────────────────────────────────────
-log_info "Step 9/9: Registering wrapper in PATH..."
+# ─── 10. PATH 등록 ───────────────────────────────────────────
+log_info "Step 10/10: Registering wrapper in PATH..."
 SHELL_RC=""
 if [[ -f "${HOME}/.bashrc" ]]; then SHELL_RC="${HOME}/.bashrc"
 elif [[ -f "${HOME}/.zshrc" ]]; then SHELL_RC="${HOME}/.zshrc"; fi
