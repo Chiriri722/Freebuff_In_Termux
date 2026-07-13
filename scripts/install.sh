@@ -55,11 +55,11 @@ fi
 
 # ─── 4. distro 내부에 Bun 설치 ───────────────────────────────
 log_info "Installing Bun runtime inside ${DISTRO}..."
-BUN_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc 'command -v bun' 2>/dev/null || true)
+BUN_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c 'export PATH=/root/.bun/bin:/usr/local/bin:/usr/bin:/bin:$PATH && command -v bun' 2>/dev/null || true)
 if [[ -n "${BUN_CHECK}" ]]; then
     log_ok "Bun is already installed in ${DISTRO}"
 else
-    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc 'curl -fsSL https://bun.sh/install | bash'
+    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c 'export PATH=/root/.bun/bin:/usr/local/bin:/usr/bin:/bin:$PATH && curl -fsSL https://bun.sh/install | bash'
     log_ok "Bun installed in ${DISTRO}"
 fi
 
@@ -69,13 +69,13 @@ NODE_VERSION="v22.17.1"
 NODE_URL="https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-arm64.tar.gz"
 NODE_TARBALL="${HOME}/node.tar.gz"
 
-if ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc '/usr/local/bin/node --version' 2>/dev/null; then
+if ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c '/usr/local/bin/node --version' 2>/dev/null; then
     log_ok "Node.js is already installed in ${DISTRO}"
 else
     curl -fsSL "${NODE_URL}" -o "${NODE_TARBALL}"
     cp "${NODE_TARBALL}" "${DISTRO_ROOTFS}/tmp/node.tar.gz"
     rm "${NODE_TARBALL}"
-    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc \
+    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c \
         'tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 && rm /tmp/node.tar.gz'
     log_ok "Node.js ${NODE_VERSION} installed in ${DISTRO}"
 fi
@@ -83,11 +83,11 @@ fi
 # ─── 6. distro 내부에 FreeBuff 설치 ──────────────────────────
 log_info "Installing FreeBuff CLI inside ${DISTRO}..."
 FB_PATH='/usr/local/bin:/usr/bin:/bin:/root/.bun/bin'
-FB_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc "export PATH=${FB_PATH}:\$PATH && command -v freebuff" 2>/dev/null || true)
+FB_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c "export PATH=${FB_PATH}:\$PATH && command -v freebuff" 2>/dev/null || true)
 if [[ -n "${FB_CHECK}" ]]; then
     log_ok "FreeBuff is already installed in ${DISTRO}"
 else
-    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -lc "export PATH=${FB_PATH}:\$PATH && bun install -g freebuff"
+    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c "export PATH=${FB_PATH}:\$PATH && bun install -g freebuff"
     log_ok "FreeBuff installed in ${DISTRO}"
 fi
 
@@ -163,7 +163,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-exec ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -c \
+exec ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c \
     "export PATH=/usr/local/bin:/usr/bin:/bin:/root/.bun/bin:\$PATH && export OVERRIDE_PLATFORM=linux && cd '${PROOT_CWD}' && freebuff \"\$@\"" \
     -- "$@"
 WRAPPER_EOF

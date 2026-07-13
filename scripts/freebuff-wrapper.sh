@@ -53,6 +53,8 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # ─── FreeBuff 실행 ───────────────────────────────────────────
-exec ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash -c \
+# --norc --noprofile: proot-distro v5.x에서 bash -c 실행 시 프로파일이
+# PATH를 덮어쓰는 문제 방지 (declare -x 환경 출력 + /usr/local/bin 누락)
+exec ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c \
     "export PATH=/usr/local/bin:/usr/bin:/bin:/root/.bun/bin:\$PATH && export OVERRIDE_PLATFORM=linux && cd '${PROOT_CWD}' && freebuff \"\$@\"" \
     -- "$@"
