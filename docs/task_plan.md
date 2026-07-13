@@ -50,8 +50,12 @@
 - proot PATH에 `/data/data/com.termux/files/usr/bin` 포함 → Termux의 xdg-open이 fallback으로 작동 (이것이 이전에 크롬이 열린 원인)
 
 ### 남은 과제
-- [ ] 5-6: 인 앱 메뉴 디렉토리 선택 → Enter → 인증 링크 플로우 사용성 개선 (가상 키보드 편법 없이 정상 작동)
-- [ ] 5-7: GitHub 공개 후 fresh install 테스트 (다른 기기에서 `curl | bash` 원라인 설치)
+- [x] 5-6: 트릭 A (클립보드 자동 복사 fallback) 탑재
+  - 백그라운드 감시자 3단계 fallback: termux-open-url → termux-clipboard-set → 터미널 대형 출력
+  - `termux-api` 패키지 설치를 install 스크립트에 추가 (termux-clipboard-set 의존성)
+- [ ] 5-7: 인 앱 메뉴 디렉토리 선택 → Enter → 인증 링크 플로우 사용성 개선 (가상 키보드 편법 없이 정상 작동)
+- [ ] 5-8: GitHub 공개 후 fresh install 테스트 (다른 기기에서 `curl | bash` 원라인 설치)
+- [ ] 5-9: 실기기 로그인 플로우 전체 테스트 (정공법 + 트릭 A 작동 확인)
 
 ## 전체 프로젝트 완료 요약
 - Phase 1: 프로젝트 구조 구축

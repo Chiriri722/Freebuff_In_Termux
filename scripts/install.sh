@@ -29,7 +29,7 @@ log_info "Preparing Termux packages..."
 dpkg --configure -a 2>/dev/null || true
 pkg upgrade -y 2>/dev/null || true
 pkg update -y
-pkg install -y proot-distro nodejs git curl
+pkg install -y proot-distro nodejs git curl termux-api
 if ! command -v proot-distro &>/dev/null; then
     log_error "Failed to install proot-distro."
     exit 1
@@ -137,7 +137,7 @@ fi
 URL_BRIDGE_FILE="${TERMUX_HOME}/.freebuff-url-to-open"
 rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
 
-# 백그라운드 URL 감시자
+# 백그라운드 URL 감시자: xdg-open이 파일에 URL을 기록하면 3단계로 전달
 url_watcher() {
     local count=0
     while [[ ${count} -lt 3600 ]]; do
@@ -145,8 +145,27 @@ url_watcher() {
             local url
             url=$(cat "${URL_BRIDGE_FILE}" 2>/dev/null || true)
             if [[ -n "${url}" ]]; then
-                echo -e "\n\033[0;34m[INFO]\033[0m Opening browser for login..."
-                termux-open-url "${url}" 2>/dev/null || true
+                echo -e "\n\033[0;34m[INFO]\033[0m Login URL detected. Delivering to browser..."
+                # 1단계: termux-open-url (브라우저 자동 열기)
+                termux-open-url "${url}" 2>/dev/null && {
+                    echo -e "\033[0;32m[OK]\033[0m Browser opened automatically."
+                } || {
+                    # 2단계: termux-clipboard-set (클립보드에 URL 복사)
+                    echo -e "\033[0;33m[WARN]\033[0m Browser auto-open failed. Trying clipboard..."
+                    termux-clipboard-set "${url}" 2>/dev/null && {
+                        echo -e "\033[0;32m[OK]\033[0m URL copied to clipboard. Paste in browser."
+                    } || {
+                        # 3단계: 터미널 대형 출력 (수동 복사)
+                        echo -e "\033[0;33m[WARN]\033[0m Clipboard unavailable. Manual copy:"
+                    }
+                }
+                # 3단계 fallback: 항상 터미널에도 출력
+                echo ""
+                echo "  ============================================"
+                echo "  🔑 LOGIN URL:"
+                echo "  ${url}"
+                echo "  ============================================"
+                echo ""
                 rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
             fi
         fi
