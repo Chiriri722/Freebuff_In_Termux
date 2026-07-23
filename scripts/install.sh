@@ -217,3 +217,14 @@ if [[ -n "${SHELL_RC}" ]]; then
 fi
 echo -e "Usage: ${BLUE}cd ~/my-project && freebuff${NC}\n"
 
+# 에이전트/AI가 파싱할 수 있는 구조화된 상태 정보
+echo -e "${BLUE}[INSTALL_STATUS]${NC} success"
+echo -e "${BLUE}[TOOL_TYPE]${NC} termux-compatibility-layer"
+echo -e "${BLUE}[STRATEGY]${NC} B+C-hybrid (proot-distro + path-bridge)"
+echo -e "${BLUE}[DISTRO]${NC} ${DISTRO}"
+echo -e "${BLUE}[WRAPPER_PATH]${NC} ${WRAPPER_PATH}"
+echo -e "${BLUE}[EXEC_COMMAND]${NC} cd ~/my-project && freebuff"
+if [[ -n "${SHELL_RC}" ]]; then
+    echo -e "${BLUE}[SHELL_RC]${NC} ${SHELL_RC}"
+fi
+

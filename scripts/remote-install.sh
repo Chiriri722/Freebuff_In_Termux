@@ -311,3 +311,16 @@ echo ""
 echo -e "  Health check: ${BLUE}bash ${INSTALL_DIR}/skill/freebuff-hermes-integration/scripts/health_check.sh${NC}"
 echo ""
 
+# 에이전트/AI가 파싱할 수 있는 구조화된 상태 정보
+echo -e "${BLUE}[INSTALL_STATUS]${NC} success"
+echo -e "${BLUE}[TOOL_TYPE]${NC} termux-compatibility-layer"
+echo -e "${BLUE}[STRATEGY]${NC} B+C-hybrid (proot-distro + path-bridge)"
+echo -e "${BLUE}[DISTRO]${NC} ${DISTRO}"
+echo -e "${BLUE}[REPOSITORY]${NC} ${INSTALL_DIR}"
+echo -e "${BLUE}[WRAPPER_PATH]${NC} ${WRAPPER_PATH}"
+echo -e "${BLUE}[EXEC_COMMAND]${NC} cd ~/my-project && freebuff"
+echo -e "${BLUE}[HEALTH_CHECK]${NC} bash ${INSTALL_DIR}/skill/freebuff-hermes-integration/scripts/health_check.sh"
+if [[ -n "${SHELL_RC}" ]]; then
+    echo -e "${BLUE}[SHELL_RC]${NC} ${SHELL_RC}"
+fi
+
