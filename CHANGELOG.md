@@ -8,6 +8,12 @@
 ## [Unreleased]
 
 ### Added
+- README.md 에이전트/AI 통합 가이드 섹션 추가
+  - 통합 가능한 에이전트 유형 테이블 (코딩, CLI 자동화, 모니터링)
+  - 에이전트가 알아야 할 핵심 사항 5가지
+  - 스킬 통합 코드 예시 (`freebuff-hermes-integration`)
+- README.md 사전 요구사항 (Prerequisites) 섹션 추가
+  - Termux, proot-distro, Node.js, Bun, storage 권한 요구사항 테이블
 - FreeBuff 인터랙티브 런처 (`FreeBuffLauncher` 클래스)
   - `spawn` 기반 실시간 stdin/stdout/stderr 브리징
   - `Spawner` 인터페이스 주입으로 테스트 가능
@@ -36,6 +42,10 @@
 - 51개 테스트 (5 test suites)
 
 ### Changed
+- README.md B+C 전략 설명 개선
+  - 메타데이터 헤더 추가 (도구 타입, 대상, 전략)
+  - B+C 전략 비교 테이블 + ASCII 아키텍처 다이어그램
+  - 기술 제약사항을 테이블로 재구성
 - 프로젝트 구조를 `src/` + `tests/` + `docs/` 분리 구조로 재편
 - `tsconfig.json`에 `isolatedModules`, `declaration`, `sourceMap` 추가
 - `package.json`에 `build`, `start`, `dev`, `test:coverage` 스크립트 추가
