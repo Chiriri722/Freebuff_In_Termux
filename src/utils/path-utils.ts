@@ -35,17 +35,32 @@ export const resolvePath = (path: string): string => {
     return path;
   }
 
-  const prefix = getTermuxPrefix();
+  const prefix = getTermuxPrefix().replace(/\/+$/, '');
 
   // 이미 PREFIX로 시작하면 중복 적용 방지
-  if (path.startsWith(prefix)) {
+  if (path === prefix || path.startsWith(`${prefix}/`)) {
     return path;
   }
 
-  // path는 항상 '/'로 시작함 (위에서 검증됨)
-  // prefix가 '/'로 끝나면 이중 슬래시 방지를 위해 path의 앞 slash 제거
-  if (prefix.endsWith('/')) {
-    return `${prefix}${path.slice(1)}`;
+  // Android의 실제 절대 경로(/storage, /data 등)는 보존한다.
+  // 전통적인 /usr 경로와 Termux PREFIX 직속 시스템 디렉터리만 변환한다.
+  if (path === '/usr') {
+    return prefix;
   }
-  return `${prefix}${path}`;
+  if (path.startsWith('/usr/')) {
+    return `${prefix}${path.slice('/usr'.length)}`;
+  }
+
+  const rootSegment = path.slice(1).split('/', 1)[0];
+  const prefixRoots = new Set([
+    'bin',
+    'etc',
+    'include',
+    'lib',
+    'libexec',
+    'share',
+    'tmp',
+    'var',
+  ]);
+  return prefixRoots.has(rootSegment) ? `${prefix}${path}` : path;
 };

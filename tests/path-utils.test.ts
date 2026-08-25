@@ -18,9 +18,18 @@ describe('Path resolution for Termux', () => {
     expect(resolvePath('test.txt')).toBe('test.txt');
   });
 
-  test('should prepend Termux prefix for absolute paths in Termux environment', () => {
+  test('should prepend Termux prefix for known Termux system paths', () => {
     process.env.PREFIX = termuxPrefix;
     expect(resolvePath('/etc/config')).toBe(`${termuxPrefix}/etc/config`);
+    expect(resolvePath('/usr/bin/node')).toBe(`${termuxPrefix}/bin/node`);
+  });
+
+  test('should preserve unrelated absolute paths in Termux environment', () => {
+    process.env.PREFIX = termuxPrefix;
+    expect(resolvePath('/storage/emulated/0/file.txt')).toBe(
+      '/storage/emulated/0/file.txt',
+    );
+    expect(resolvePath('/opt/freebuff/config')).toBe('/opt/freebuff/config');
   });
 
   test('should not prepend Termux prefix if already present', () => {

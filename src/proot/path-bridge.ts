@@ -10,14 +10,29 @@
  * - proot 절대 경로 중 Termux 홈이 아닌 경로는 그대로 유지
  */
 
+import { existsSync } from 'node:fs';
 import { normalizePathForTermux } from '../utils/system-utils.js';
 import type { ProotDistroConfig } from '../types.js';
+import { assertSafeIdentifier } from './command-spec.js';
 
 /** Termux 홈 디렉토리 기본값 */
 const DEFAULT_TERMUX_HOME = '/data/data/com.termux/files/home';
 
+/** Termux PREFIX 기본값 */
+const DEFAULT_TERMUX_PREFIX = '/data/data/com.termux/files/usr';
+
 /** proot 내 홈 디렉토리 기본값 (root 사용자) */
 const DEFAULT_PROOT_HOME = '/root';
+
+/** 존재하지 않는 host bind source를 실행 전에 나타내는 구조화 오류. */
+export class BindMountError extends Error {
+  readonly code = 'BIND_MOUNT_NOT_FOUND';
+
+  constructor(readonly mount: string) {
+    super(`Bind mount source does not exist: ${mount}`);
+    this.name = 'BindMountError';
+  }
+}
 
 /**
  * 설정에서 누락된 기본값을 채운 완전한 설정을 반환한다.
@@ -26,13 +41,14 @@ const resolveConfig = (
   config: Partial<ProotDistroConfig>,
 ): Required<
   Pick<ProotDistroConfig, 'distro' | 'user' | 'termuxHome' | 'prootHome'>
-> & { bindMounts: string[] } => {
+> & { bindMounts: string[]; storageBind: boolean } => {
   return {
     distro: config.distro ?? 'ubuntu',
     user: config.user ?? 'root',
     termuxHome: config.termuxHome ?? process.env.HOME ?? DEFAULT_TERMUX_HOME,
     prootHome: config.prootHome ?? DEFAULT_PROOT_HOME,
     bindMounts: config.bindMounts ?? [],
+    storageBind: config.storageBind ?? false,
   };
 };
 
@@ -45,7 +61,13 @@ const resolveConfig = (
  * @returns distro 루트 파일 시스템 경로
  */
 export const getProotRootPath = (distro: string, prefix?: string): string => {
-  const termuxPrefix = prefix ?? process.env.PREFIX ?? DEFAULT_TERMUX_HOME;
+  assertSafeIdentifier(distro, 'distro');
+  const termuxPrefix = normalizePathForTermux(
+    prefix ?? process.env.PREFIX ?? DEFAULT_TERMUX_PREFIX,
+  );
+  if (!termuxPrefix.startsWith('/') || /[\0\r\n]/.test(termuxPrefix)) {
+    throw new Error('Termux PREFIX must be an absolute path');
+  }
   return `${termuxPrefix}/var/lib/proot-distro/containers/${distro}/rootfs`;
 };
 
@@ -67,7 +89,8 @@ export const termuxToProot = (
   termuxPath: string,
   config: Partial<ProotDistroConfig> = {},
 ): string => {
-  const { termuxHome, prootHome } = resolveConfig(config);
+  const { termuxHome, prootHome, storageBind, bindMounts } =
+    resolveConfig(config);
   const normalized = normalizePathForTermux(termuxPath);
 
   // Termux 홈 하위 경로를 proot 홈으로 매핑
@@ -80,6 +103,12 @@ export const termuxToProot = (
 
   // 공유 저장소 경로는 그대로 유지 (bind mount)
   if (normalized.startsWith('/storage/')) {
+    const hasExplicitStorageMount = bindMounts.includes('/storage/emulated/0');
+    if (!storageBind && !hasExplicitStorageMount) {
+      throw new Error(
+        'Shared storage path requires storage bind to be explicitly enabled.',
+      );
+    }
     return normalized;
   }
 
@@ -132,17 +161,34 @@ export const prootToTermux = (
  */
 export const buildBindMountArgs = (
   config: Partial<ProotDistroConfig> = {},
+  pathExists: (path: string) => boolean = existsSync,
 ): string[] => {
-  const { bindMounts } = resolveConfig(config);
+  const { bindMounts, storageBind } = resolveConfig(config);
   const args: string[] = [];
+  const mounts = new Set<string>();
 
-  // 공유 저장소는 항상 bind mount
-  args.push('--bind', '/storage/emulated/0');
+  if (storageBind) mounts.add('/storage/emulated/0');
 
-  // 사용자 지정 bind mount 추가
   for (const mount of bindMounts) {
-    args.push('--bind', mount);
+    const separatorIndex = mount.indexOf(':');
+    const source =
+      separatorIndex === -1 ? mount : mount.slice(0, separatorIndex);
+    const target =
+      separatorIndex === -1 ? undefined : mount.slice(separatorIndex + 1);
+    if (
+      !source.startsWith('/') ||
+      (target !== undefined && !target.startsWith('/')) ||
+      mount.includes('\0') ||
+      mount.includes('\n') ||
+      mount.includes('\r')
+    ) {
+      throw new Error(`Invalid bind mount: ${JSON.stringify(mount)}`);
+    }
+    if (!pathExists(source)) throw new BindMountError(source);
+    mounts.add(mount);
   }
+
+  for (const mount of mounts) args.push('--bind', mount);
 
   return args;
 };

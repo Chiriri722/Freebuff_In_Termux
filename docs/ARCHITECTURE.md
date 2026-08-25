@@ -1,107 +1,79 @@
-# 아키텍처: FreeBuff Termux 호환 레이어
+# 아키텍처: FreeBuff in Termux
 
-## 기술 결정 배경
+## 목적과 경계
 
-### 문제 정의
+FreeBuff in Termux는 Android용 네이티브 포트가 아니라 Termux와 PRoot Linux 사이의 실행·설치·인증 URL 브리지다. Termux wrapper가 사용자 프로젝트와 터미널을 소유하고, PRoot 안의 digest-pinned Linux rootfs에서 고정 버전 Node.js와 FreeBuff를 실행한다.
 
-FreeBuff는 Codebuff 플랫폼 기반의 무료 AI 코딩 에이전트입니다:
-- npm 패키지 `freebuff` (v0.0.119)로 배포
-- **Bun 런타임**으로 컴파일된 단일 바이너리 (`#!/usr/bin/env bun`)
-- 소스 코드는 비공개 (`CodebuffAI/freebuff-private`)
+실제 Android 커널, Termux 권한, PRoot의 signal 전달은 Windows 호스트 테스트로 완전히 재현할 수 없다. 따라서 호스트 계약과 실제 기기 evidence를 구분한다.
 
-Bun은 Termux/Android aarch64에서 **실행 불가**합니다:
-- `cannot execute: required file not found` 에러
-- Bun 바이너리가 Android의 실행 파일 포맷을 지원하지 않음
-- 관련 이슈: [oven-sh/bun#5085](https://github.com/oven-sh/bun/issues/5085), [#28924](https://github.com/oven-sh/bun/issues/28924)
+## 런타임 구조
 
-### 접근법 비교
-
-| 접근법 | 설명 | 결론 |
-|--------|------|------|
-| A. 소스 빌드 변환 | Codebuff 소스를 클론하여 Bun API를 Node.js로 변환 | 7,310+ 커밋 대형 코드베이스 → **불가** |
-| **B. proot-distro 래퍼** | Termux에 Linux 환경 생성 후 Bun 실행 | **채택** (1차 메커니즘) |
-| **C. Node.js 바이너리 교체** | npm 패키지에서 바이너리 추출 후 Node.js 재실행 | **탐색** (2차 전략) |
-
-## 시스템 아키텍처
-
-```
-┌─────────────────────────────────────────────────┐
-│                   Termux (Android)               │
-│                                                   │
-│  ┌─────────────┐    ┌──────────────────────────┐ │
-│  │  Wrapper     │    │  proot-distro             │ │
-│  │  ~/.local/   │───▶│  ┌─────────────────────┐ │ │
-│  │  bin/        │    │  │  Ubuntu (rootfs)     │ │ │
-│  │  freebuff    │    │  │  ┌─────────────────┐ │ │ │
-│  └─────────────┘    │  │  │  Bun runtime     │ │ │ │
-│       │              │  │  │  ┌───────────┐  │ │ │ │
-│       ▼              │  │  │  │  freebuff  │  │ │ │ │
-│  ┌─────────────┐    │  │  │  │  CLI binary │  │ │ │ │
-│  │ Path Bridge  │    │  │  │  └───────────┘  │ │ │ │
-│  │ (termux ↔    │    │  │  └─────────────────┘ │ │ │ │
-│  │  proot 변환)  │    │  └─────────────────────┘ │ │ │
-│  └─────────────┘    └──────────────────────────┘ │
-│       │                       │                   │
-│       ▼                       ▼                   │
-│  /data/data/com.termux/   /storage/emulated/0     │
-│  files/home/              (bind mount)             │
-└─────────────────────────────────────────────────┘
+```text
+Termux
+├─ ~/.local/bin/freebuff
+│  ├─ distro/config 검증
+│  ├─ private URL session 생성
+│  ├─ PRoot child 감시와 signal 전달
+│  └─ 종료 시 watcher/session 정리
+├─ ~/.local/bin/freebuff-termux
+│  └─ doctor/update/repair/uninstall
+└─ proot-distro login --isolated --shared-home <distro>
+   ├─ /root                 ← Termux HOME의 명시적 shared-home
+   ├─ /storage/emulated/0   ← FREEBUFF_STORAGE_BIND=1일 때만 추가
+   ├─ /opt/freebuff-termux  ← pinned Node.js와 FreeBuff
+   └─ /usr/local/bin/xdg-open → private URL bridge
 ```
 
-## 컴포넌트 설명
+PRoot-Distro v5의 기본 로그인은 Android 공유 저장소를 자동 노출할 수 있다. 이 프로젝트는 `--isolated --shared-home`을 사용해 HOME 프로젝트만 명시적으로 공유하고, Android storage는 opt-in으로 유지한다.
 
-### 1. termux-utils.ts — 환경 감지
-- `isTermux()`: `PREFIX` 환경 변수로 Termux 감지
-- `getTermuxPrefix()`: `/data/data/com.termux/files/usr` 반환
+## 설치 공급망
 
-### 2. path-utils.ts — 경로 보정
-- `resolvePath()`: 시스템 절대 경로를 Termux PREFIX 기반으로 변환
-- 예: `/etc/config` → `/data/data/com.termux/files/usr/etc/config`
+Canonical installer인 `scripts/install.sh`는 다음 불변 조건을 적용한다.
 
-### 3. system-utils.ts — 시스템 정보
-- `getArch()`: CPU 아키텍처 감지 (aarch64, arm, x86_64)
-- `getAndroidVersion()`: Android 버전 조회
-- `isCommandAvailable()`: 명령어 존재 확인 (크로스 플랫폼)
-- `normalizePathForTermux()`: 경로 정규화 (`.`, `..`, `~`, 중복 슬래시)
+- Ubuntu 24.04 또는 Debian 12-slim 공식 multi-platform OCI image를 SHA-256 digest로 고정한다.
+- 사용자 지정 distro는 `FREEBUFF_PROOT_IMAGE=image@sha256:<digest>`가 없으면 거부한다.
+- Node.js v22.17.1 arm64/x64 archive의 공식 SHA-256을 installer에 고정하고 custom version은 명시 checksum을 요구한다.
+- FreeBuff npm 버전과 archive SHA-512를 고정한다.
+- versioned runtime root는 현 manifest ownership 또는 archive digest marker가 없으면 신뢰하지 않는다.
+- wrapper, manager, URL bridge, config, schema 2 manifest를 원자적으로 교체한다.
+- manifest는 설치한 OCI image와 runtime archive digest를 기록하며 doctor/repair/update가 다시 검증한다.
+- 설치 실패 시 이번 실행이 변경한 managed file을 rollback한다.
+- 전체 Termux 환경에 `pkg upgrade`를 실행하지 않는다.
 
-### 4. path-bridge.ts — Termux ↔ proot 경로 변환
-- `termuxToProot()`: Termux 홈 하위 경로 → proot 홈 하위 경로
-- `prootToTermux()`: 역방향 변환
-- 공유 저장소(`/storage/emulated/0`)는 bind mount로 그대로 유지
+Remote bootstrap은 full commit SHA 또는 tag+expected commit만 받는다. Tag 설치는 GitHub Release artifact의 예상 SHA-256과 내부 `RELEASE-METADATA`를 함께 검증한다.
 
-### 5. proot-wrapper.ts — proot-distro 관리
-- `ProotDistroManager` 클래스
-- `CommandRunner` 인터페이스 주입으로 테스트 가능
-- distro 설치, Bun/FreeBuff 설치, FreeBuff 실행, 사전 검증
+## 실행 계약
 
-### 6. install.sh — 설치 자동화
-- Termux 의존성 설치 → proot-distro Ubuntu 설치
-- distro 내부에 Bun + FreeBuff 설치
-- 래퍼 스크립트 생성 및 PATH 등록
+TypeScript 경로와 shell wrapper는 공통 원칙을 따른다.
 
-## 데이터 흐름
+- distro와 user는 제한된 identifier 문법으로 검증한다.
+- CWD와 FreeBuff 인자는 Bash 코드가 아니라 별도 argv/위치 인자로 전달한다.
+- PRoot 내부 셸은 `/bin/bash --norc --noprofile -c`다.
+- PATH는 pinned runtime의 `/usr/local/bin`을 우선한다.
+- TypeScript 기본 spawner는 Linux process group을 만들고 TERM 후 grace 기간이 지나면 KILL한다.
+- shell wrapper는 `setsid --wait`로 PRoot 전용 process group을 만들고 INT/TERM 뒤 제한된 grace와 KILL·reap을 적용한다.
+- pipe 출력은 stdout+stderr 합산 바이트 예산을 가진다.
 
+## 경로와 storage
+
+```text
+/data/data/com.termux/files/home/project  → /root/project
+/storage/emulated/0/Documents/project    → 같은 경로(storage opt-in 필요)
+기타 절대 경로                           → 자동 재작성하지 않음
 ```
-사용자: cd ~/my-project && freebuff
-  │
-  ▼
-Wrapper 스크립트 (~/.local/bin/freebuff)
-  │  1. 현재 디렉토리 감지: /data/data/com.termux/files/home/my-project
-  │  2. 경로 변환: /root/my-project (proot 홈)
-  │
-  ▼
-proot-distro login ubuntu --bind /storage/emulated/0
-  │  3. Ubuntu 환경 진입
-  │  4. Bun 환경 변수 로드
-  │  5. cd /root/my-project
-  │
-  ▼
-freebuff (Bun 바이너리)
-  │  6. AI 코딩 에이전트 실행
-  │  7. 파일 읽기/쓰기 (proot 홈 경로 사용)
-  │
-  ▼
-파일 시스템 (proot rootfs)
-  │  8. /root/my-project/* → 실제로는 Termux 파일 시스템에 저장
-  │  9. /storage/emulated/0/* → Android 공유 저장소 (bind mount)
-```
+
+Custom bind source는 host에 실제로 존재해야 하며, 없으면 `BindMountError`와 `BIND_MOUNT_NOT_FOUND` 코드로 실행 전에 실패한다.
+
+## 로그인 URL
+
+각 실행은 Termux HOME 아래 0700 session 디렉터리와 0600 queue 파일을 사용한다. PRoot의 `xdg-open` bridge는 http/https, 4096바이트, 제어문자 금지 정책을 통과한 URL만 원자적으로 기록한다. Wrapper는 파일을 한 번 claim한 뒤 브라우저 또는 clipboard로 전달하고 즉시 삭제한다. URL plaintext 출력은 명시적 opt-in이다.
+
+## 검증 계층
+
+- TypeScript: Jest unit/contract tests, build, ESLint, Prettier
+- Shell: Bash syntax, ShellCheck warning gate, shfmt, Bats 동적 계약
+- Packaging: npm allowlist와 `npm pack --dry-run`
+- Release: tested runtime commit의 Termux evidence, evidence-only tag commit, tag/package 정합, 최종 artifact checksum 재검증
+- Device: fresh/rerun, browser/clipboard, Ctrl-C/잔존 PID, lifecycle 보존을 실제 Termux에서 별도 수집
+
+현재 지원 상태는 [ANDROID_COMPATIBILITY.md](./ANDROID_COMPATIBILITY.md)와 저장소 루트의 `progress.md`를 기준으로 한다.

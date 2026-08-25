@@ -2,17 +2,35 @@
   "name": "freebuff-termux",
   "version": "1.0.0",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "skill",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc && node dist/index.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test:package-consumer": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand tests/package-consumer.test.ts",
     "lint": "eslint src/ tests/",
     "lint:fix": "eslint src/ tests/ --fix",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\""
+    "format:check": "prettier --check \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "prepack": "npm run build"
   },
   "keywords": [
     "freebuff",
@@ -21,9 +39,22 @@
     "codebuff",
     "ai-coding-agent"
   ],
-  "author": "",
   "license": "MIT",
   "description": "FreeBuff (free Codebuff) Termux 호환 레이어 — B+C 하이브리드 전략 기반",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chiriri722/Freebuff_In_Termux.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Chiriri722/Freebuff_In_Termux/issues"
+  },
+  "homepage": "https://github.com/Chiriri722/Freebuff_In_Termux#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/jest": "^30.0.0",

@@ -1,3 +1,7 @@
+import { jest } from '@jest/globals';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   acquireWakeLock,
   releaseWakeLock,
@@ -40,6 +44,26 @@ describe('Termux-specific features', () => {
       expect(setupStorage()).toBe(false);
       expect(isStorageSetup()).toBe(false);
     });
+
+    test('checks the storage directory without evaluating HOME in a shell', () => {
+      process.env.PREFIX = '/data/data/com.termux/files/usr';
+      const directoryExists = jest.fn(() => true);
+      const home = '/data/data/com.termux/files/home/literal;$(not-a-command)';
+
+      expect(isStorageSetup(home, directoryExists)).toBe(true);
+      expect(directoryExists).toHaveBeenCalledWith(`${home}/storage`);
+    });
+
+    test('does not treat a regular storage file as a configured directory', () => {
+      process.env.PREFIX = '/data/data/com.termux/files/usr';
+      const home = mkdtempSync(join(tmpdir(), 'freebuff-storage-'));
+      try {
+        writeFileSync(join(home, 'storage'), 'not a directory');
+        expect(isStorageSetup(home)).toBe(false);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('getMemoryInfo', () => {
@@ -61,20 +85,22 @@ describe('Termux-specific features', () => {
     test('should return an assessment object', () => {
       const assessment = checkOomRisk();
       expect(assessment).toBeDefined();
-      expect(['safe', 'caution', 'danger']).toContain(assessment.level);
+      expect(['unknown', 'safe', 'caution', 'danger']).toContain(
+        assessment.level,
+      );
       expect(assessment.recommendedFreeKB).toBeGreaterThan(0);
       expect(assessment.currentFreeKB).toBeGreaterThanOrEqual(0);
       expect(assessment.message).toBeTruthy();
       expect(typeof assessment.message).toBe('string');
     });
 
-    test('should return safe when memory info unavailable', () => {
-      // Windows에서 /proc/meminfo가 없는 경우
-      const assessment = checkOomRisk();
-      if (assessment.currentFreeKB === 0) {
-        expect(assessment.level).toBe('safe');
-        expect(assessment.message).toContain('Unable to read');
-      }
+    test('should return unknown when memory info unavailable', () => {
+      const assess = checkOomRisk as unknown as (
+        memoryInfo: null,
+      ) => ReturnType<typeof checkOomRisk>;
+      const assessment = assess(null);
+      expect(assessment.level).toBe('unknown');
+      expect(assessment.message).toContain('Unable to read');
     });
   });
 });

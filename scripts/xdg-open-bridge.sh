@@ -2,16 +2,32 @@
 # ============================================================================
 # xdg-open bridge — proot 내부에서 Termux 브라우저로 URL 전달
 # ============================================================================
-# proot 내부의 HOME은 /root (rootfs 내부)이므로 Termux 홈에 접근 불가.
-# 하지만 proot-distro는 Termux 홈 디렉토리를 노출하므로
-# 절대 경로로 직접 접근한다.
-#
 # 설치 위치: proot Ubuntu 내부 /usr/local/bin/xdg-open
 # ============================================================================
+set -euo pipefail
+umask 077
 
-# Termux 홈 절대 경로 (proot가 노출하는 실제 경로)
-TERMUX_HOME="/data/data/com.termux/files/home"
-URL_FILE="${TERMUX_HOME}/.freebuff-url-to-open"
+MAX_URL_LENGTH=4096
+URL_FILE="${FREEBUFF_URL_BRIDGE_FILE:-}"
+
+is_valid_login_url() {
+    local url="$1"
+    [[ ${#url} -le ${MAX_URL_LENGTH} ]] || return 1
+    case "${url}" in
+        http://* | https://*) ;;
+        *) return 1 ;;
+    esac
+    [[ ! "${url}" =~ [[:cntrl:]] ]]
+}
+
+print_plaintext_fallback() {
+    local url="$1"
+    if [[ "${FREEBUFF_URL_ALLOW_PLAINTEXT:-0}" == "1" ]]; then
+        echo "  LOGIN URL: ${url}"
+    else
+        echo "xdg-open: URL bridge unavailable; set FREEBUFF_URL_ALLOW_PLAINTEXT=1 to print it" >&2
+    fi
+}
 
 if [[ $# -lt 1 ]]; then
     echo "xdg-open: no URL provided" >&2
@@ -20,22 +36,36 @@ fi
 
 URL="$1"
 
-# URL을 감시 파일에 기록
-echo "${URL}" > "${URL_FILE}" 2>/dev/null || {
-    echo ""
-    echo "=========================================="
-    echo "  🔑 LOGIN URL (manual copy required):"
-    echo "  ${URL}"
-    echo "=========================================="
-    exit 0
-}
+if ! is_valid_login_url "${URL}"; then
+    echo "xdg-open: rejected invalid login URL" >&2
+    exit 2
+fi
 
-# 터미널에도 URL 출력 (백업)
-echo ""
-echo "=========================================="
-echo "  🔑 LOGIN URL (auto-opening browser...):"
-echo "  ${URL}"
-echo "=========================================="
-echo ""
+if [[ -z "${URL_FILE}" ]]; then
+    print_plaintext_fallback "${URL}"
+    exit 3
+fi
+
+if [[ ! "${URL_FILE}" =~ ^/data/data/com\.termux/files/home/\.cache/freebuff-termux/sessions/session\.[[:alnum:]]{6}/login-url$ ]]; then
+    echo "xdg-open: rejected unsafe bridge path" >&2
+    print_plaintext_fallback "${URL}"
+    exit 3
+fi
+
+URL_DIR="$(dirname "${URL_FILE}")"
+if [[ ! -d "${URL_DIR}" ]] || [[ -L "${URL_DIR}" ]]; then
+    echo "xdg-open: bridge session is unavailable" >&2
+    print_plaintext_fallback "${URL}"
+    exit 3
+fi
+
+TMP_FILE="$(mktemp "${URL_FILE}.tmp.XXXXXX")"
+trap 'rm -f "${TMP_FILE}"' EXIT
+chmod 600 "${TMP_FILE}"
+printf '%s\n' "${URL}" >"${TMP_FILE}"
+mv -f "${TMP_FILE}" "${URL_FILE}"
+trap - EXIT
+
+echo "xdg-open: login URL queued for the Termux bridge"
 
 exit 0

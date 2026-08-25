@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import {
   getArch,
   getStoragePath,
@@ -29,6 +30,33 @@ describe('System utilities', () => {
       expect(isCommandAvailable('this-command-does-not-exist-12345')).toBe(
         false,
       );
+    });
+
+    test('scans PATH without invoking a shell', () => {
+      const checked: string[] = [];
+      expect(
+        isCommandAvailable('freebuff', {
+          path: '/first:/second',
+          platform: 'linux',
+          isExecutable: (candidate) => {
+            checked.push(candidate);
+            return candidate === '/second/freebuff';
+          },
+        }),
+      ).toBe(true);
+      expect(checked).toEqual(['/first/freebuff', '/second/freebuff']);
+    });
+
+    test('rejects shell metacharacters before touching PATH', () => {
+      const isExecutable = jest.fn(() => true);
+      expect(
+        isCommandAvailable('node;touch-pwned', {
+          path: '/bin',
+          platform: 'linux',
+          isExecutable,
+        }),
+      ).toBe(false);
+      expect(isExecutable).not.toHaveBeenCalled();
     });
   });
 

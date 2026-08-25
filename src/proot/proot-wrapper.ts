@@ -3,13 +3,13 @@
  *
  * B+C 하이브리드 전략의 핵심 컴포넌트.
  * proot-distro를 통해 Termux 내부에 Linux 환경을 구성하고,
- * 그 안에서 Bun 런타임과 FreeBuff CLI를 실행할 수 있도록 지원한다.
+ * 그 안에서 검증된 Node.js 런타임과 FreeBuff CLI를 실행하도록 지원한다.
  *
  * 의존성 주입: CommandRunner 인터페이스를 통해 명령 실행기를 주입받아
  * 테스트 가능성을 확보한다.
  */
 
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import type {
   CommandRunner,
   ExecResult,
@@ -22,35 +22,33 @@ import {
   buildBindMountArgs,
   getProotRootPath,
 } from './path-bridge.js';
+import {
+  assertPinnedImageReference,
+  assertSafeIdentifier,
+  FREEBUFF_EXECUTABLE,
+  FREEBUFF_RUNTIME_PATH,
+} from './command-spec.js';
 
 // ─── 기본 CommandRunner 구현체 ───────────────────────────────
 
 /**
- * child_process.execSync를 기반으로 하는 기본 CommandRunner 구현체.
+ * child_process.spawnSync를 기반으로 하는 shell-free CommandRunner 구현체.
  */
 const defaultCommandRunner: CommandRunner = {
-  exec(command: string, options?: ExecOptions): ExecResult {
-    try {
-      const stdout = execSync(command, {
-        encoding: 'utf-8',
-        cwd: options?.cwd,
-        env: { ...process.env, ...options?.env },
-        timeout: options?.timeout,
-        stdio: 'pipe',
-      });
-      return { stdout, stderr: '', exitCode: 0 };
-    } catch (error: unknown) {
-      const err = error as {
-        stdout?: string;
-        stderr?: string;
-        status?: number;
-      };
-      return {
-        stdout: err.stdout ?? '',
-        stderr: err.stderr ?? String(error),
-        exitCode: err.status ?? 1,
-      };
-    }
+  execFile(command: string, args: string[], options?: ExecOptions): ExecResult {
+    const result = spawnSync(command, args, {
+      encoding: 'utf-8',
+      cwd: options?.cwd,
+      env: { ...process.env, ...options?.env },
+      timeout: options?.timeout,
+      stdio: 'pipe',
+      shell: false,
+    });
+    return {
+      stdout: result.stdout ?? '',
+      stderr: result.stderr || result.error?.message || '',
+      exitCode: result.status ?? 1,
+    };
   },
 };
 
@@ -63,7 +61,7 @@ const defaultCommandRunner: CommandRunner = {
  * - proot-distro 설치 여부 확인
  * - Linux distro 설치/삭제
  * - distro 내부에서 명령 실행
- * - Bun 런타임 및 FreeBuff CLI 설치
+ * - 설치 상태 점검과 canonical installer 안내
  * - FreeBuff 실행 (경로 브리지 자동 적용)
  */
 export class ProotDistroManager {
@@ -73,29 +71,42 @@ export class ProotDistroManager {
     this.runner = runner ?? defaultCommandRunner;
   }
 
+  private execFile(
+    command: string,
+    args: string[],
+    options?: ExecOptions,
+  ): ExecResult {
+    if (!this.runner.execFile) {
+      return {
+        stdout: '',
+        stderr:
+          'CommandRunner.execFile is required for shell-free command execution.',
+        exitCode: 1,
+      };
+    }
+    return this.runner.execFile(command, args, options);
+  }
+
   /**
    * proot-distro 명령어가 시스템에 설치되어 있는지 확인한다.
    */
   isProotDistroInstalled(): boolean {
-    const result = this.runner.exec('command -v proot-distro');
-    return result.exitCode === 0 && result.stdout.trim().length > 0;
+    return this.execFile('proot-distro', ['--help']).exitCode === 0;
   }
 
   /**
    * 지정된 distro가 proot-distro에 설치되어 있는지 확인한다.
    */
   isDistroInstalled(distro: string): boolean {
-    const result = this.runner.exec(
-      `proot-distro list --installed 2>/dev/null | grep -q "^${distro}$"`,
-    );
-    return result.exitCode === 0;
+    assertSafeIdentifier(distro, 'distro');
+    return this.getInstalledDistros().includes(distro);
   }
 
   /**
    * 설치된 distro 목록을 반환한다.
    */
   getInstalledDistros(): string[] {
-    const result = this.runner.exec('proot-distro list --installed');
+    const result = this.execFile('proot-distro', ['list', '--quiet']);
     if (result.exitCode !== 0) {
       return [];
     }
@@ -108,7 +119,8 @@ export class ProotDistroManager {
   /**
    * 새로운 Linux distro를 설치한다.
    */
-  installDistro(distro: string): ExecResult {
+  installDistro(distro: string, image?: string): ExecResult {
+    assertSafeIdentifier(distro, 'distro');
     if (!this.isProotDistroInstalled()) {
       return {
         stdout: '',
@@ -123,7 +135,16 @@ export class ProotDistroManager {
         exitCode: 0,
       };
     }
-    return this.runner.exec(`proot-distro install ${distro}`);
+    if (!image) {
+      return {
+        stdout: '',
+        stderr:
+          'A digest-pinned image is required. Use image@sha256:<64 lowercase hex characters>.',
+        exitCode: 1,
+      };
+    }
+    assertPinnedImageReference(image);
+    return this.execFile('proot-distro', ['install', '--name', distro, image]);
   }
 
   /**
@@ -133,7 +154,11 @@ export class ProotDistroManager {
     distro: string,
     command: string,
     config: Partial<ProotDistroConfig> = {},
+    commandArgs: string[] = [],
   ): ExecResult {
+    assertSafeIdentifier(distro, 'distro');
+    if (config.user) assertSafeIdentifier(config.user, 'user');
+
     if (!this.isDistroInstalled(distro)) {
       return {
         stdout: '',
@@ -141,42 +166,57 @@ export class ProotDistroManager {
         exitCode: 1,
       };
     }
-    const bindArgs = buildBindMountArgs(config).join(' ');
-    const userFlag = config.user ? ` --user ${config.user}` : '';
-    const escapedCmd = command.replace(/'/g, "'\\''");
-    const fullCmd = `proot-distro login${userFlag} ${bindArgs} ${distro} -- bash -lc '${escapedCmd}'`;
-    return this.runner.exec(fullCmd);
+    const bindArgs = buildBindMountArgs(config);
+    const userFlag = config.user ? ['--user', config.user] : [];
+    return this.execFile('proot-distro', [
+      'login',
+      ...userFlag,
+      '--isolated',
+      '--shared-home',
+      ...bindArgs,
+      distro,
+      '--',
+      '/bin/bash',
+      '--norc',
+      '--noprofile',
+      '-c',
+      command,
+      '--',
+      ...commandArgs,
+    ]);
   }
 
   /**
-   * distro 내부에 Bun 런타임을 설치한다.
+   * @deprecated mutable `curl | bash` 설치를 제거했다. canonical installer를 사용한다.
    */
   installBunInDistro(distro: string): ExecResult {
-    return this.execInDistro(
-      distro,
-      'curl -fsSL https://bun.sh/install | bash',
-    );
+    assertSafeIdentifier(distro, 'distro');
+    return {
+      stdout: '',
+      stderr:
+        'Legacy Bun installation is disabled. Run the pinned scripts/install.sh workflow.',
+      exitCode: 1,
+    };
   }
 
   /**
-   * distro 내부에 FreeBuff CLI를 전역 설치한다.
+   * @deprecated unpinned package installation을 제거했다. canonical installer를 사용한다.
    */
   installFreeBuffInDistro(distro: string): ExecResult {
-    const cmd =
-      'export BUN_INSTALL="$HOME/.bun" && ' +
-      'export PATH="$BUN_INSTALL/bin:$PATH" && ' +
-      'bun install -g freebuff';
-    return this.execInDistro(distro, cmd);
+    assertSafeIdentifier(distro, 'distro');
+    return {
+      stdout: '',
+      stderr:
+        'Legacy FreeBuff installation is disabled. Run the pinned scripts/install.sh workflow.',
+      exitCode: 1,
+    };
   }
 
   /**
    * FreeBuff가 distro 내부에 설치되어 있는지 확인한다.
    */
   isFreeBuffInstalled(distro: string): boolean {
-    const cmd =
-      'export BUN_INSTALL="$HOME/.bun" && ' +
-      'export PATH="$BUN_INSTALL/bin:$PATH" && ' +
-      'command -v freebuff';
+    const cmd = `export PATH="${FREEBUFF_RUNTIME_PATH}:$PATH"; command -v freebuff`;
     const result = this.execInDistro(distro, cmd);
     return result.exitCode === 0 && result.stdout.trim().length > 0;
   }
@@ -192,15 +232,10 @@ export class ProotDistroManager {
     config: Partial<ProotDistroConfig> = {},
   ): FreeBuffRunResult {
     const prootCwd = termuxToProot(termuxCwd, config);
-    const escapedArgs = args
-      .map((a) => `'${a.replace(/'/g, "'\\''")}'`)
-      .join(' ');
-    const escapedCwd = prootCwd.replace(/'/g, "'\\''");
     const cmd =
-      'export BUN_INSTALL="$HOME/.bun" && ' +
-      'export PATH="$BUN_INSTALL/bin:$PATH" && ' +
-      `cd '${escapedCwd}' && freebuff ${escapedArgs}`;
-    const result = this.execInDistro(distro, cmd, config);
+      `export PATH="${FREEBUFF_RUNTIME_PATH}:$PATH"; ` +
+      `cd -- "$1"; shift; exec ${FREEBUFF_EXECUTABLE} "$@"`;
+    const result = this.execInDistro(distro, cmd, config, [prootCwd, ...args]);
     return { ...result, termuxCwd, prootCwd };
   }
 
@@ -216,7 +251,7 @@ export class ProotDistroManager {
       missing.push(`distro '${distro}' (proot-distro install ${distro})`);
     }
     if (missing.length === 0 && !this.isFreeBuffInstalled(distro)) {
-      missing.push('freebuff (installFreeBuffInDistro)');
+      missing.push('freebuff (run the pinned scripts/install.sh workflow)');
     }
     return { ready: missing.length === 0, missing };
   }

@@ -1,3 +1,5 @@
+> 역사 문서입니다. 현재 구현 계획과 상태는 저장소 루트의 `task-plan.md`와 `progress.md`를 따릅니다.
+
 # FreeBuff Termux 프로젝트 — 다각도 개선 계획서
 
 ## 1. 현황 분석

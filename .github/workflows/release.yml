@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Validate & Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: termux-release
+
+    steps:
+      - name: Checkout tagged commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate tag, package version, and Termux evidence
+        shell: bash
+        run: >-
+          bash scripts/release-preflight.sh
+          "${GITHUB_REF_TYPE}"
+          "${GITHUB_REF_NAME}"
+          "${GITHUB_SHA}"
+          "${GITHUB_WORKSPACE}"
+
+      - name: Install dependencies and shell test tools
+        run: |
+          npm ci
+          sudo apt-get update
+          sudo apt-get install --yes bats shellcheck shfmt
+
+      - name: Quality gates
+        run: |
+          npm run build
+          npm run lint
+          npm run format:check
+          npm test -- --runInBand
+          npm pack --dry-run --json
+          npm run test:package-consumer
+          bash -n \
+            scripts/freebuff-wrapper.sh \
+            scripts/install.sh \
+            scripts/remote-install.sh \
+            scripts/manage.sh \
+            scripts/release-artifact-verify.sh \
+            scripts/release-preflight.sh \
+            scripts/xdg-open-bridge.sh \
+            scripts/lib/install-transaction.sh \
+            skill/freebuff-hermes-integration/scripts/health_check.sh
+          shellcheck --severity=warning \
+            scripts/freebuff-wrapper.sh \
+            scripts/install.sh \
+            scripts/remote-install.sh \
+            scripts/manage.sh \
+            scripts/release-artifact-verify.sh \
+            scripts/release-preflight.sh \
+            scripts/xdg-open-bridge.sh \
+            scripts/lib/install-transaction.sh \
+            skill/freebuff-hermes-integration/scripts/health_check.sh
+          shfmt -d -i 4 -ci -bn \
+            scripts/freebuff-wrapper.sh \
+            scripts/install.sh \
+            scripts/remote-install.sh \
+            scripts/manage.sh \
+            scripts/release-artifact-verify.sh \
+            scripts/release-preflight.sh \
+            scripts/xdg-open-bridge.sh \
+            scripts/lib/install-transaction.sh \
+            skill/freebuff-hermes-integration/scripts/health_check.sh
+          bats tests/shell
+          BATS_BIN="$(command -v bats)"
+          sudo env FREEBUFF_RUN_INSTALLER_INTEGRATION=1 \
+            "${BATS_BIN}" tests/shell/installer-integration.bats
+
+      - name: Build release artifact and checksums
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          ROOT_NAME="freebuff-termux-${TAG}"
+          RELEASE_DIR="release/${ROOT_NAME}"
+          mkdir -p "${RELEASE_DIR}"
+          cp -R scripts skill dist "${RELEASE_DIR}/"
+          cp README.md CHANGELOG.md LICENSE package.json package-lock.json "${RELEASE_DIR}/"
+          cat > "${RELEASE_DIR}/RELEASE-METADATA" <<METADATA
+          schema=1
+          tag=${TAG}
+          commit=${GITHUB_SHA}
+          package_version=${TAG#v}
+          METADATA
+          tar -czf "release/${ROOT_NAME}.tar.gz" -C release "${ROOT_NAME}"
+          ARTIFACT_SHA256="$(sha256sum "release/${ROOT_NAME}.tar.gz" | awk '{print $1}')"
+          printf '%s  %s\n' \
+            "${ARTIFACT_SHA256}" \
+            "freebuff-termux-${TAG}.tar.gz" \
+            > "release/${ROOT_NAME}.tar.gz.sha256"
+          (
+            cd "${RELEASE_DIR}"
+            find scripts -type f -name '*.sh' -print0 \
+              | sort -z \
+              | xargs -0 sha256sum
+          ) > "release/${ROOT_NAME}.scripts.sha256"
+          printf 'artifact_sha256=%s\n' "${ARTIFACT_SHA256}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify final release bytes
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          ARTIFACT="release/freebuff-termux-${TAG}.tar.gz"
+          bash scripts/release-artifact-verify.sh \
+            "${ARTIFACT}" \
+            "${{ steps.package.outputs.artifact_sha256 }}" \
+            "${TAG}" \
+            "${GITHUB_SHA}"
+          (
+            cd release
+            sha256sum -c "freebuff-termux-${TAG}.tar.gz.sha256"
+          )
+
+      - name: Upload validated artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: freebuff-termux-${{ github.ref_name }}
+          path: |
+            release/freebuff-termux-${{ github.ref_name }}.tar.gz
+            release/freebuff-termux-${{ github.ref_name }}.tar.gz.sha256
+            release/freebuff-termux-${{ github.ref_name }}.scripts.sha256
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "release/freebuff-termux-${GITHUB_REF_NAME}.tar.gz" \
+            "release/freebuff-termux-${GITHUB_REF_NAME}.tar.gz.sha256" \
+            "release/freebuff-termux-${GITHUB_REF_NAME}.scripts.sha256" \
+            --verify-tag \
+            --generate-notes \
+            --title "FreeBuff in Termux ${GITHUB_REF_NAME}"

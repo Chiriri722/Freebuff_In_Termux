@@ -2,6 +2,7 @@ import {
   termuxToProot,
   prootToTermux,
   buildBindMountArgs,
+  BindMountError,
   isTermuxHomePath,
   getProotRootPath,
 } from '../src/proot/path-bridge.js';
@@ -30,13 +31,23 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
       ).toBe(`${PROOT_HOME}/project`);
     });
 
-    test('should preserve shared storage paths', () => {
+    test('should preserve shared storage paths when storage bind is enabled', () => {
       expect(
         termuxToProot('/storage/emulated/0/Documents', {
           termuxHome: TERMUX_HOME,
           prootHome: PROOT_HOME,
+          storageBind: true,
         }),
       ).toBe('/storage/emulated/0/Documents');
+    });
+
+    test('should reject shared storage paths when storage bind is disabled', () => {
+      expect(() =>
+        termuxToProot('/storage/emulated/0/Documents', {
+          termuxHome: TERMUX_HOME,
+          prootHome: PROOT_HOME,
+        }),
+      ).toThrow(/storage bind/i);
     });
 
     test('should not transform unrelated absolute paths', () => {
@@ -96,16 +107,44 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
   });
 
   describe('buildBindMountArgs', () => {
-    test('should always include shared storage bind', () => {
+    test('should not bind shared storage unless explicitly enabled', () => {
       const args = buildBindMountArgs();
-      expect(args).toContain('--bind');
-      expect(args).toContain('/storage/emulated/0');
+      expect(args).not.toContain('/storage/emulated/0');
+    });
+
+    test('should include shared storage once when explicitly enabled', () => {
+      const args = buildBindMountArgs(
+        {
+          storageBind: true,
+          bindMounts: ['/storage/emulated/0'],
+        },
+        () => true,
+      );
+      expect(args.filter((arg) => arg === '/storage/emulated/0')).toHaveLength(
+        1,
+      );
     });
 
     test('should include custom bind mounts', () => {
-      const args = buildBindMountArgs({ bindMounts: ['/tmp', '/dev'] });
+      const args = buildBindMountArgs(
+        { bindMounts: ['/tmp', '/dev'] },
+        () => true,
+      );
       expect(args).toContain('/tmp');
       expect(args).toContain('/dev');
+    });
+
+    test('rejects a missing custom mount with a structured error', () => {
+      try {
+        buildBindMountArgs({ bindMounts: ['/missing/project'] }, () => false);
+        throw new Error('Expected buildBindMountArgs to reject the mount');
+      } catch (error) {
+        expect(error).toBeInstanceOf(BindMountError);
+        expect(error).toMatchObject({
+          code: 'BIND_MOUNT_NOT_FOUND',
+          mount: '/missing/project',
+        });
+      }
     });
   });
 
@@ -134,6 +173,23 @@ describe('Path Bridge: Termux ↔ proot conversion', () => {
       expect(getProotRootPath('ubuntu', PREFIX)).toBe(
         `${PREFIX}/var/lib/proot-distro/containers/ubuntu/rootfs`,
       );
+    });
+
+    test('should default to the Termux PREFIX path, not HOME', () => {
+      const originalPrefix = process.env.PREFIX;
+      delete process.env.PREFIX;
+      try {
+        expect(getProotRootPath('ubuntu')).toBe(
+          '/data/data/com.termux/files/usr/var/lib/proot-distro/containers/ubuntu/rootfs',
+        );
+      } finally {
+        if (originalPrefix === undefined) delete process.env.PREFIX;
+        else process.env.PREFIX = originalPrefix;
+      }
+    });
+
+    test('should reject unsafe distro names', () => {
+      expect(() => getProotRootPath('../escape', PREFIX)).toThrow(/distro/i);
     });
   });
 });

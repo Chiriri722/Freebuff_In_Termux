@@ -32,8 +32,10 @@ export interface ExecOptions {
  * 테스트에서는 mock 구현체를 주입한다.
  */
 export interface CommandRunner {
-  /** 동기식 명령 실행 */
-  exec(command: string, options?: ExecOptions): ExecResult;
+  /** @deprecated 셸 문자열 실행은 사용하지 않는다. 새 구현은 execFile만 제공해야 한다. */
+  exec?(command: string, options?: ExecOptions): ExecResult;
+  /** 셸을 거치지 않는 동기식 argv 실행 */
+  execFile?(command: string, args: string[], options?: ExecOptions): ExecResult;
 }
 
 /** CPU 아키텍처 타입 */
@@ -51,6 +53,8 @@ export interface ProotDistroConfig {
   prootHome?: string;
   /** 추가 bind mount 경로 목록 */
   bindMounts?: string[];
+  /** Android 공유 저장소를 bind mount할지 여부 (기본값: false) */
+  storageBind?: boolean;
 }
 
 /** proot-distro 실행 결과에 경로 변환 정보를 추가한 결과 */
@@ -73,6 +77,10 @@ export interface SpawnResult {
   stdout: string;
   /** 캡처된 표준 에러 (pipe 모드인 경우) */
   stderr: string;
+  /** 런처가 종료를 시작한 구조화된 이유 */
+  terminationReason?: 'timeout' | 'abort' | 'output-limit';
+  /** 출력 예산을 초과하여 stdout/stderr가 잘렸는지 여부 */
+  outputTruncated?: boolean;
 }
 
 /** 런처 실행 옵션 */
@@ -85,6 +93,12 @@ export interface LaunchOptions {
   stdio?: 'inherit' | 'pipe';
   /** 타임아웃 (밀리초, 0 = 무제한) */
   timeout?: number;
+  /** TERM 이후 KILL까지 기다리는 시간 (기본값: 5000ms) */
+  killGraceMs?: number;
+  /** pipe 모드 stdout+stderr 총 바이트 예산 (기본값: 1MiB) */
+  maxOutputBytes?: number;
+  /** 호출자 취소 신호 */
+  signal?: AbortSignal;
 }
 
 /**
@@ -117,7 +131,7 @@ export interface MemoryInfo {
 /** OOM 위험도 평가 결과 */
 export interface OomRiskAssessment {
   /** 위험 등급 */
-  level: 'safe' | 'caution' | 'danger';
+  level: 'unknown' | 'safe' | 'caution' | 'danger';
   /** 권장 최소 여유 메모리 (KB) */
   recommendedFreeKB: number;
   /** 현재 여유 메모리 (KB) */

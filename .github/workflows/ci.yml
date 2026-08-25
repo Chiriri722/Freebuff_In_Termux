@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     name: Build & Test (Node ${{ matrix.node-version }})
@@ -17,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -37,7 +40,7 @@ jobs:
 
       - name: Upload coverage
         if: matrix.node-version == 22
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-report
           path: coverage/
@@ -49,10 +52,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -65,3 +68,71 @@ jobs:
 
       - name: Prettier check
         run: npm run format:check
+
+      - name: Package dry run
+        run: npm pack --dry-run --json
+
+      - name: Packed consumer smoke
+        run: npm run test:package-consumer
+
+  shell-contracts:
+    name: Bash, ShellCheck, shfmt & Bats
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install shell test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes bats shellcheck shfmt util-linux
+
+      - name: Bash syntax
+        run: |
+          bash -n \
+            scripts/freebuff-wrapper.sh \
+            scripts/install.sh \
+            scripts/remote-install.sh \
+            scripts/manage.sh \
+            scripts/release-artifact-verify.sh \
+            scripts/release-preflight.sh \
+            scripts/xdg-open-bridge.sh \
+            scripts/lib/install-transaction.sh \
+            skill/freebuff-hermes-integration/scripts/health_check.sh
+
+      - name: ShellCheck
+        run: |
+          shellcheck --severity=warning \
+            scripts/freebuff-wrapper.sh \
+            scripts/install.sh \
+            scripts/remote-install.sh \
+            scripts/manage.sh \
+            scripts/release-artifact-verify.sh \
+            scripts/release-preflight.sh \
+            scripts/xdg-open-bridge.sh \
+            scripts/lib/install-transaction.sh \
+            skill/freebuff-hermes-integration/scripts/health_check.sh
+
+      - name: shfmt
+        run: |
+          shfmt -d -i 4 -ci -bn \
+            scripts/freebuff-wrapper.sh \
+            scripts/install.sh \
+            scripts/remote-install.sh \
+            scripts/manage.sh \
+            scripts/release-artifact-verify.sh \
+            scripts/release-preflight.sh \
+            scripts/xdg-open-bridge.sh \
+            scripts/lib/install-transaction.sh \
+            skill/freebuff-hermes-integration/scripts/health_check.sh
+
+      - name: Bats
+        run: bats tests/shell
+
+      - name: Full installer hard-crash recovery
+        run: |
+          BATS_BIN="$(command -v bats)"
+          sudo env FREEBUFF_RUN_INSTALLER_INTEGRATION=1 \
+            "${BATS_BIN}" tests/shell/installer-integration.bats

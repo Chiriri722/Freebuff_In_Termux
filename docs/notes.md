@@ -1,3 +1,5 @@
+> 역사 문서입니다. 현재 구현 사실은 `docs/ARCHITECTURE.md`, 루트 `findings.md`, `progress.md`를 따릅니다.
+
 # Notes: FreeBuff Termux 프로젝트 조사 결과
 
 ## Sources

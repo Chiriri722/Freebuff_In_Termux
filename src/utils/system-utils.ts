@@ -5,7 +5,9 @@
  * 조회하고, 명령어 존재 여부를 확인하며, 경로를 정규화하는 유틸리티 함수들을 제공한다.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { accessSync, constants, statSync } from 'node:fs';
+import { posix, win32 } from 'node:path';
 import { isTermux } from './termux-utils.js';
 import type { Architecture } from '../types.js';
 
@@ -46,9 +48,10 @@ export const getAndroidVersion = (): string | null => {
     return null;
   }
   try {
-    const version = execSync('getprop ro.build.version.release', {
+    const version = execFileSync('getprop', ['ro.build.version.release'], {
       encoding: 'utf-8',
       timeout: 5000,
+      shell: false,
     }).trim();
     return version || null;
   } catch {
@@ -67,25 +70,71 @@ export const getStoragePath = (): string => {
 };
 
 /**
- * 지정된 명령어가 시스템 PATH에 존재하는지 확인한다.
- * Windows에서는 `where`, Linux/macOS/Termux에서는 `command -v`를 사용한다.
+ * shell을 실행하지 않고 지정된 명령어가 시스템 PATH에 존재하는지 확인한다.
  *
  * @param command - 확인할 명령어 이름
  * @returns 명령어가 존재하면 true, 그렇지 않으면 false
  */
-export const isCommandAvailable = (command: string): boolean => {
-  const checkCmd =
-    process.platform === 'win32' ? `where ${command}` : `command -v ${command}`;
+export interface CommandLookupOptions {
+  path?: string;
+  pathExtensions?: string;
+  platform?: NodeJS.Platform;
+  isExecutable?: (candidate: string) => boolean;
+}
+
+const isExecutableFile = (
+  candidate: string,
+  platform: NodeJS.Platform,
+): boolean => {
   try {
-    execSync(checkCmd, {
-      encoding: 'utf-8',
-      timeout: 5000,
-      stdio: 'pipe',
-    });
+    if (!statSync(candidate).isFile()) return false;
+    if (platform !== 'win32') accessSync(candidate, constants.X_OK);
     return true;
   } catch {
     return false;
   }
+};
+
+export const isCommandAvailable = (
+  command: string,
+  options: CommandLookupOptions = {},
+): boolean => {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(command)) return false;
+
+  const platform = options.platform ?? process.platform;
+  const pathValue =
+    options.path ??
+    process.env.PATH ??
+    process.env.Path ??
+    process.env.path ??
+    '';
+  const pathSeparator = platform === 'win32' ? ';' : ':';
+  const pathApi = platform === 'win32' ? win32 : posix;
+  const extensions =
+    platform === 'win32'
+      ? (options.pathExtensions ?? process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD')
+          .split(';')
+          .filter(Boolean)
+      : [''];
+  const hasKnownExtension = extensions.some((extension) =>
+    command.toLowerCase().endsWith(extension.toLowerCase()),
+  );
+  const commandNames =
+    platform === 'win32' && !hasKnownExtension
+      ? extensions.map((extension) => `${command}${extension}`)
+      : [command];
+  const isExecutable =
+    options.isExecutable ??
+    ((candidate: string) => isExecutableFile(candidate, platform));
+
+  for (const rawDirectory of pathValue.split(pathSeparator)) {
+    const directory = rawDirectory.trim().replace(/^"|"$/g, '');
+    if (!directory) continue;
+    for (const commandName of commandNames) {
+      if (isExecutable(pathApi.join(directory, commandName))) return true;
+    }
+  }
+  return false;
 };
 
 /**

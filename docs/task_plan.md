@@ -1,5 +1,7 @@
 # Task Plan: FreeBuff Termux — Phase 4 품질 & 자동화
 
+> **역사 문서:** 이 파일은 Phase 1~5 구현 이력을 보존합니다. 현재 안전성·재현성 강화 작업의 단일 기준은 루트 [`task-plan.md`](../task-plan.md)입니다.
+
 ## Goal
 경계 케이스 테스트(4A), CI/CD 파이프라인(4B), 린트/포맷팅(4C), Android 호환성 문서(4D)를 완료한다.
 

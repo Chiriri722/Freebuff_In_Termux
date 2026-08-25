@@ -1,112 +1,77 @@
-# Android 버전별 호환성 매트릭스
+# Android·Termux 호환성 및 evidence
 
-## 개요
+## 현재 결론
 
-FreeBuff Termux 호환 레이어는 Android 7.0 (Nougat) 이상에서 작동하도록 설계되었다.
-이 문서는 각 Android 버전에서의 호환성 상태와 알려진 제약사항을 기록한다.
+현재 변경은 Windows 호스트와 Node 22.17.1 Debian/WSL2 Linux에서 검증됐지만, 독립된 실제 Termux 기기 evidence는 아직 수집되지 않았다. Linux에서는 전체 Jest, `setsid` child/grandchild cleanup, 실제 installer hard-crash recovery가 통과했다. 그래도 특정 Android 버전을 “완전 호환”으로 표시하지 않는다. 첫 stable Release는 실제 기기에서 검증한 runtime commit과 그 직후의 evidence-only tag commit이 없으면 생성되지 않도록 차단돼 있다.
 
-## 호환성 매트릭스
+## 의도한 지원 범위
 
-| Android 버전 | SDK | Termux | proot-distro | Bun (proot 내) | FreeBuff | 상태 |
-|-------------|-----|--------|-------------|----------------|----------|------|
-| 15 (Vanilla Ice Cream) | 35 | ✅ | ✅ | ✅ | ✅ | 완전 호환 |
-| 14 (Upside Down Cake) | 34 | ✅ | ✅ | ✅ | ✅ | 완전 호환 |
-| 13 (Tiramisu) | 33 | ✅ | ✅ | ✅ | ✅ | 완전 호환 |
-| 12 (Snow Cone) | 31 | ✅ | ✅ | ✅ | ✅ | 완전 호환 |
-| 11 (R) | 30 | ✅ | ✅ | ✅ | ✅ | 완전 호환 |
-| 10 (Q) | 29 | ✅ | ✅ | ⚠️ | ⚠️ | 메모리 제약 |
-| 9 (Pie) | 28 | ✅ | ✅ | ⚠️ | ⚠️ | 메모리 제약 |
-| 8.1 (Oreo) | 27 | ✅ | ✅ | ⚠️ | ⚠️ | 메모리 제약 |
-| 8.0 (Oreo) | 26 | ✅ | ⚠️ | ❌ | ❌ | proot 제약 |
-| 7.1 (Nougat) | 25 | ✅ | ⚠️ | ❌ | ❌ | proot 제약 |
-| 7.0 (Nougat) | 24 | ⚠️ | ❌ | ❌ | ❌ | 최소 요구 미충족 |
+| 항목         | 의도한 범위                                                                                      | 현재 증거                             |
+| ------------ | ------------------------------------------------------------------------------------------------ | ------------------------------------- |
+| Termux       | F-Droid 또는 공식 GitHub 배포판의 최신 계열                                                      | 실제 기기 재검증 대기                 |
+| PRoot-Distro | [v5 계약](https://github.com/termux/proot-distro)(`list --quiet`, `--isolated`, `--shared-home`) | 정적·호스트 계약 통과                 |
+| Android CPU  | aarch64/arm64, x86_64/amd64                                                                      | installer 매핑 테스트 통과, 기기 대기 |
+| Android 버전 | 최소 버전 미확정                                                                                 | 기기 매트릭스 필요                    |
+| Linux rootfs | digest-pinned Ubuntu 24.04, Debian 12-slim                                                       | installer 계약 통과, 설치 대기        |
+| Runtime      | pinned Node.js + pinned FreeBuff                                                                 | checksum/버전 계약 통과, 실행 대기    |
 
-## 상태 범례
+ARM32와 i386은 TypeScript의 환경 감지 값에는 존재하지만 canonical installer가 해당 Node archive를 지원하지 않으므로 현재 지원 대상이 아니다.
 
-- ✅ 완전 호환: 모든 기능이 정상 동작
-- ⚠️ 제약 있음: 동작하지만 성능/메모리 제약 존재
-- ❌ 미지원: 동작하지 않음
+## 실제 기기 검증 매트릭스
 
-## 버전별 상세 정보
+각 행은 tested runtime commit, Termux/Android/PRoot 버전, 기기 아키텍처, 실행 날짜를 기록해야 한다.
 
-### Android 12+ (완전 호환)
+| 시나리오                | aarch64 | x86_64 | 필수 증거                               |
+| ----------------------- | ------- | ------ | --------------------------------------- |
+| fresh install           | 대기    | 대기   | digest·checksum, doctor JSON, 실행 로그 |
+| 동일 ref 재설치         | 대기    | 대기   | 멱등성, 사용자 파일 보존                |
+| 정상 종료               | 대기    | 대기   | 동일 exit code, session/PID 잔존 0      |
+| Ctrl-C/SIGTERM          | 대기    | 대기   | terminal 복구, child tree 잔존 0        |
+| 로그인 URL              | 대기    | 대기   | browser/clipboard와 URL 파일 삭제       |
+| 동시 2세션              | 대기    | 대기   | URL 교차 전달 0                         |
+| storage 기본 off        | 대기    | 대기   | HOME 동작, Android storage 미노출       |
+| storage opt-in          | 대기    | 대기   | 권한 승인 후 명시적 mount               |
+| repair/update/uninstall | 대기    | 대기   | runtime 복구와 프로젝트·credential 보존 |
+| checksum failure        | 대기    | 대기   | 설치 중단과 managed file rollback       |
 
-- **Termux**: 공식 지원, 모든 기능 정상 동작
-- **proot-distro**: 안정적, Ubuntu/Debian distro 정상 설치
-- **Bun**: proot 환경에서 정상 실행
-- **FreeBuff**: 모든 기능 사용 가능
-- **권장 사양**: RAM 4GB 이상, 저장공간 2GB 이상
+Evidence 파일은 [`docs/termux-evidence/TEMPLATE.md`](./termux-evidence/TEMPLATE.md)를 복사해 `docs/termux-evidence/vX.Y.Z.md`에 두고 다음 필드를 포함한다.
 
-### Android 10-11 (메모리 제약)
-
-- **Termux**: 정상 동작
-- **proot-distro**: 정상 동작하지만 메모리 부족 시 OOM Killer 종료 가능
-- **Bun**: 실행 가능하지만 메모리 집약적 작업 시 위험
-- **FreeBuff**: 기본 기능 동작, 대규모 코드베이스 처리 시 주의
-- **권장 사양**: RAM 3GB 이상, `checkOomRisk()` 사전 실행 권장
-
-### Android 8-9 (메모리 제약 + 성능 저하)
-
-- **Termux**: 정상 동작
-- **proot-distro**: 정상 동작하지만 성능 저하
-- **Bun**: 실행 가능하지만 메모리 제약 심각
-- **FreeBuff**: 제한적 사용 (소규모 프로젝트만)
-- **권장 사양**: RAM 2GB 이상, `termux-wake-lock` 필수
-
-### Android 7-8 (proot 제약)
-
-- **Termux**: 정상 동작
-- **proot-distro**: seccomp 필터 제약으로 일부 distro 설치 실패 가능
-- **Bun**: proot 환경 구성 실패 시 실행 불가
-- **FreeBuff**: proot 환경 구성 실패 시 사용 불가
-- **해결책**: proot-distro 대신 `chroot` 또는 다른 방법 고려 필요
-
-### Android 7.0 미만 (미지원)
-
-- **Termux**: 구버전 APK 필요, 보안 위험
-- **proot-distro**: 미지원
-- 본 프로젝트는 Android 7.0 미만을 지원하지 않음
-
-## 아키텍처별 호환성
-
-| 아키텍처 | Termux | proot-distro | Bun | 비고 |
-|----------|--------|-------------|-----|------|
-| aarch64 (ARM64) | ✅ | ✅ | ✅ | 대부분의 현대 Android 기기 |
-| arm (ARM32) | ✅ | ✅ | ⚠️ | 성능 저하, 구형 기기 |
-| x86_64 | ✅ | ✅ | ✅ | 에뮬레이터/Chromebook |
-| i386 | ✅ | ⚠️ | ❌ | 레거시, 미권장 |
-
-## 알려진 문제와 해결책
-
-### 1. OOM Killer에 의한 프로세스 종료 (Android 10-11)
-
-**증상**: FreeBuff 실행 중 갑자기 종료, "Killed" 메시지
-**해결책**:
-```bash
-# 실행 전 메모리 확인
-node -e "const {checkOomRisk} = require('./dist/utils/termux-features.js'); console.log(checkOomRisk())"
-# 위험 시 다른 앱 종료 후 재시도
+```yaml
+status: passed
+commit: <40-character-tested-runtime-commit>
+tested_at: <ISO-8601>
+android: <version>
+termux: <version/source>
+proot_distro: <version>
+architecture: <aarch64-or-x86_64>
 ```
 
-### 2. Doze 모드에 의한 일시 정지 (Android 6+)
+비밀, 로그인 URL, token, 사용자 절대 경로는 evidence에 기록하지 않는다.
 
-**증상**: 화면이 꺼지면 FreeBuff가 일시 정지
-**해결책**:
+기기 검증이 끝나면 evidence 파일만 추가한 커밋을 만들고 그 커밋에 release tag를 둔다. Release preflight는 evidence의 tested commit이 tag commit의 조상인지, 두 커밋 사이의 유일한 변경 경로가 정확한 `docs/termux-evidence/vX.Y.Z.md`인지 확인한다.
+
+## 알려진 제약
+
+- PRoot는 `ptrace` 기반이므로 파일 시스템 작업이 네이티브 실행보다 느릴 수 있다.
+- Android의 Doze/OOM 정책은 장시간 프로세스를 종료하거나 정지시킬 수 있다.
+- 공유 저장소는 `termux-setup-storage` 승인과 명시적 `FREEBUFF_STORAGE_BIND=1`이 모두 필요하다.
+- 메모리 정보를 읽지 못하면 안전으로 간주하지 않고 `unknown`으로 처리한다.
+- 브라우저 intent와 clipboard는 Termux:API 설치·권한·Android 정책에 따라 실패할 수 있다.
+
+## 기기에서 실행할 기본 점검
+
 ```bash
-termux-wake-lock  # 실행 전
-freebuff          # FreeBuff 사용
-termux-wake-unlock  # 실행 후
+freebuff-termux doctor --json
+cd ~/test-project
+freebuff
 ```
 
-### 3. 저장소 접근 거부 (Android 11+)
+공유 저장소를 검증할 때만 다음을 사용한다.
 
-**증상**: `/storage/emulated/0` 접근 시 Permission denied
-**해결책**:
 ```bash
-termux-setup-storage  # 권한 요청 다이얼로그 승인
+termux-setup-storage
+cd /storage/emulated/0/Documents/test-project
+FREEBUFF_STORAGE_BIND=1 freebuff
 ```
 
-### 4. proot-distro 설치 실패 (Android 7-8)
-
-**증상**: `proot-distro install ubuntu` 실패
-**해결책**: seccomp 필터 비활성화 또는 Termux F-Droid 버전 사용
+전체 실행 절차와 판정 기준은 저장소 루트의 `task-plan.md` P0 검증 추적을 따른다.

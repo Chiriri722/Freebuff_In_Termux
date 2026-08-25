@@ -49,11 +49,16 @@ describe('FreeBuffLauncher', () => {
       expect(cmd).toBe('proot-distro');
       expect(args[0]).toBe('login');
       expect(args).toContain('ubuntu');
-      expect(args).toContain('bash');
-      expect(args).toContain('-lc');
+      expect(args).toContain('/bin/bash');
+      expect(args).toContain('--norc');
+      expect(args).toContain('--noprofile');
+      expect(args).toContain('-c');
+      expect(args).not.toContain('-lc');
+      expect(args).toContain('--isolated');
+      expect(args).toContain('--shared-home');
     });
 
-    test('should include bind mount args', () => {
+    test('should omit shared storage bind by default', () => {
       const launcher = new FreeBuffLauncher(createMockSpawner().spawner);
       const [, args] = launcher.buildCommand(
         'ubuntu',
@@ -61,6 +66,17 @@ describe('FreeBuffLauncher', () => {
         [],
         config,
       );
+      expect(args).not.toContain('/storage/emulated/0');
+      expect(args).toContain('--isolated');
+      expect(args).toContain('--shared-home');
+    });
+
+    test('should include shared storage bind when configured', () => {
+      const launcher = new FreeBuffLauncher(createMockSpawner().spawner);
+      const [, args] = launcher.buildCommand('ubuntu', '/root/proj', [], {
+        ...config,
+        storageBind: true,
+      });
       expect(args).toContain('--bind');
       expect(args).toContain('/storage/emulated/0');
     });
@@ -75,20 +91,35 @@ describe('FreeBuffLauncher', () => {
       expect(args).toContain('myuser');
     });
 
-    test('should include freebuff args in bash command', () => {
+    test('should preserve FreeBuff arguments as positional argv', () => {
       const launcher = new FreeBuffLauncher(createMockSpawner().spawner);
       const [, args] = launcher.buildCommand(
         'ubuntu',
         '/root/proj',
-        ['--help'],
+        [
+          '--help',
+          "quote'$(touch /tmp/pwn);`id`",
+          'line one\nline two',
+          '한글-인자',
+        ],
         config,
       );
-      const bashCmd = args[args.length - 1];
+      const shellIndex = args.indexOf('-c');
+      const bashCmd = args[shellIndex + 1];
       expect(bashCmd).toContain('freebuff');
-      expect(bashCmd).toContain("'--help'");
+      expect(bashCmd).not.toContain('/root/proj');
+      expect(bashCmd).not.toContain('touch /tmp/pwn');
+      expect(args.slice(shellIndex + 2)).toEqual([
+        '--',
+        '/root/proj',
+        '--help',
+        "quote'$(touch /tmp/pwn);`id`",
+        'line one\nline two',
+        '한글-인자',
+      ]);
     });
 
-    test('should set BUN_INSTALL and PATH in bash command', () => {
+    test('should expose the pinned Node installation paths', () => {
       const launcher = new FreeBuffLauncher(createMockSpawner().spawner);
       const [, args] = launcher.buildCommand(
         'ubuntu',
@@ -96,13 +127,47 @@ describe('FreeBuffLauncher', () => {
         [],
         config,
       );
-      const bashCmd = args[args.length - 1];
-      expect(bashCmd).toContain('BUN_INSTALL');
-      expect(bashCmd).toContain('$BUN_INSTALL/bin:$PATH');
+      const shellIndex = args.indexOf('-c');
+      const bashCmd = args[shellIndex + 1];
+      expect(bashCmd).not.toContain('BUN_INSTALL');
+      expect(bashCmd).toContain(
+        '/opt/freebuff-termux/current-freebuff/bin:/opt/freebuff-termux/current-node/bin:/usr/local/bin:/usr/bin:/bin',
+      );
+    });
+
+    test('should reject unsafe distro and user identifiers before spawning', () => {
+      const launcher = new FreeBuffLauncher(createMockSpawner().spawner);
+      expect(() =>
+        launcher.buildCommand(
+          'ubuntu;touch /tmp/pwn',
+          '/root/proj',
+          [],
+          config,
+        ),
+      ).toThrow(/distro/i);
+      expect(() =>
+        launcher.buildCommand('ubuntu', '/root/proj', [], {
+          ...config,
+          user: 'root --bind /',
+        }),
+      ).toThrow(/user/i);
     });
   });
 
   describe('launch', () => {
+    test('should reject a failed preflight before spawning', async () => {
+      const mock = createMockSpawner();
+      const launcher = new FreeBuffLauncher(mock.spawner, () => ({
+        ready: false,
+        missing: ['freebuff'],
+      }));
+
+      await expect(
+        launcher.launch('ubuntu', `${TERMUX_HOME}/proj`, [], config),
+      ).rejects.toThrow(/preflight.*freebuff/i);
+      expect(mock.calls).toHaveLength(0);
+    });
+
     test('should use inherit stdio for interactive mode', async () => {
       const mock = createMockSpawner([
         { exitCode: 0, signal: null, stdout: '', stderr: '' },
@@ -119,9 +184,11 @@ describe('FreeBuffLauncher', () => {
       ]);
       const launcher = new FreeBuffLauncher(mock.spawner);
       await launcher.launch('ubuntu', `${TERMUX_HOME}/proj`, [], config);
-      const bashCmd = mock.calls[0].args[mock.calls[0].args.length - 1];
-      expect(bashCmd).toContain('/root/proj');
-      expect(bashCmd).not.toContain(TERMUX_HOME);
+      const shellIndex = mock.calls[0].args.indexOf('-c');
+      const bashCmd = mock.calls[0].args[shellIndex + 1];
+      expect(bashCmd).not.toContain('/root/proj');
+      expect(mock.calls[0].args[shellIndex + 3]).toBe('/root/proj');
+      expect(mock.calls[0].args).not.toContain(TERMUX_HOME);
     });
   });
 

@@ -1,68 +1,46 @@
 # Changelog
 
-이 프로젝트의 주요 변경 사항은 이 파일에 기록됩니다.
-
-형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 기반으로 하며,
-이 프로젝트는 [Semantic Versioning](https://semver.org/lang/ko/)을 준수합니다.
+All notable changes to this project are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use Semantic Versioning.
 
 ## [Unreleased]
 
 ### Added
-- README.md 에이전트/AI 통합 가이드 섹션 추가
-  - 통합 가능한 에이전트 유형 테이블 (코딩, CLI 자동화, 모니터링)
-  - 에이전트가 알아야 할 핵심 사항 5가지
-  - 스킬 통합 코드 예시 (`freebuff-hermes-integration`)
-- README.md 사전 요구사항 (Prerequisites) 섹션 추가
-  - Termux, proot-distro, Node.js, Bun, storage 권한 요구사항 테이블
-- FreeBuff 인터랙티브 런처 (`FreeBuffLauncher` 클래스)
-  - `spawn` 기반 실시간 stdin/stdout/stderr 브리징
-  - `Spawner` 인터페이스 주입으로 테스트 가능
-  - 인터랙티브 모드 (`launch()`) 및 프로그래밍 모드 (`run()`)
-  - SIGINT/SIGTERM 시그널 전달
-- Termux 특화 기능 (`termux-features.ts`)
-  - Wake Lock 관리 (`acquireWakeLock`, `releaseWakeLock`)
-  - 저장소 권한 설정 (`setupStorage`, `isStorageSetup`)
-  - 메모리 정보 조회 (`getMemoryInfo`)
-  - OOM 위험도 평가 (`checkOomRisk`)
-- `Spawner`, `SpawnResult`, `LaunchOptions`, `MemoryInfo`, `OomRiskAssessment` 타입
-- Hermes Agent 연동 스킬 재작성 (실제 API 기반)
-- CONTRIBUTING.md, ARCHITECTURE.md
 
-## [0.0.2] - 2026-07-10
-
-### Added
-- 공유 타입 정의 (`types.ts`): `CommandRunner`, `ExecResult`, `ProotDistroConfig` 등
-- 시스템 유틸리티 (`system-utils.ts`): `getArch`, `getAndroidVersion`, `isCommandAvailable`, `normalizePathForTermux`
-- proot-distro 래퍼 (`proot-wrapper.ts`): `ProotDistroManager` 클래스
-  - distro 설치/확인, Bun/FreeBuff 설치, FreeBuff 실행, 사전 검증
-  - `CommandRunner` 인터페이스 주입으로 테스트 가능
-- 경로 브리지 (`path-bridge.ts`): `termuxToProot`, `prootToTermux`, `buildBindMountArgs`
-- Termux 설치 스크립트 (`scripts/install.sh`): 7단계 자동 설치
-- README.md, docs/ARCHITECTURE.md, docs/PLAN.md, docs/notes.md, docs/task_plan.md
-- 51개 테스트 (5 test suites)
+- Session-scoped login URL bridge with private permissions and atomic consume.
+- Structured PRoot command execution, identifier validation, lifecycle manager, strict JSON doctor, and release gates.
+- Architecture-aware Node.js download with official SHA-256 verification.
+- Installer-owned runtime markers and manifest-preserved Node/FreeBuff archive checksums.
+- Bounded programmatic output, AbortSignal cancellation, timeout escalation, and Linux process-group cleanup.
+- ShellCheck, shfmt, Bats, npm payload, workflow pinning, and release-contract CI gates.
+- Durable multi-file installer transactions with hard-exit recovery and failpoint tests.
+- Exact npm payload allowlisting, clean-consumer installation smoke, and executable release preflight checks.
 
 ### Changed
-- README.md B+C 전략 설명 개선
-  - 메타데이터 헤더 추가 (도구 타입, 대상, 전략)
-  - B+C 전략 비교 테이블 + ASCII 아키텍처 다이어그램
-  - 기술 제약사항을 테이블로 재구성
-- 프로젝트 구조를 `src/` + `tests/` + `docs/` 분리 구조로 재편
-- `tsconfig.json`에 `isolatedModules`, `declaration`, `sourceMap` 추가
-- `package.json`에 `build`, `start`, `dev`, `test:coverage` 스크립트 추가
-- `jest.config.cjs`로 전환 (ts-jest CommonJS 호환성)
+
+- Installers use canonical wrapper/bridge files, pinned dependencies, atomic managed-file replacement, and rollback.
+- Shared storage bind is disabled by default and requires explicit opt-in.
+- PRoot-Distro v5 execution uses `list --quiet` and `--isolated --shared-home`; rootfs OCI images are digest-pinned.
+- The shell wrapper launches PRoot in a dedicated `setsid` process group and escalates termination after a bounded grace period.
+- The install manifest is schema 2 and records the validated PRoot image digest.
+- The npm package publishes only runtime/operator artifacts through explicit ESM exports and a files allowlist.
+- Runtime pointers are project-owned under `/opt/freebuff-termux`; installers no longer create global `/usr/local/bin` links.
+- Release evidence records the tested runtime commit and is committed as the only change before tagging.
+- CI and releases execute the real installer hard-crash recovery contract in an isolated root filesystem.
+- Installer integration covers every transactional failpoint under both SIGKILL recovery and SIGTERM rollback.
+
+### Security
+
+- Remote installation rejects branches and verifies full commits or checksummed Release artifacts.
+- Authentication URLs are no longer written to a fixed shared file or printed by default.
+- Global Termux package upgrades and shell-interpolated user arguments were removed.
+- Host probes no longer evaluate command or HOME strings through a shell.
+- GitHub Actions dependencies are pinned to immutable commit SHAs.
+- Existing managed paths and hashes are validated before repair, update, uninstall, or replacement.
+- FreeBuff npm tarballs are SHA-512 verified before installation.
+- Pre-existing runtime roots are rejected unless manifest-owned or marked with the exact expected archive digest.
+- Login bridge session paths use a traversal-safe exact pattern instead of a slash-matching shell glob.
+- Final release archives are structurally validated and checked against an independently captured SHA-256 before upload.
 
 ### Fixed
-- tsconfig.json `rootDir`/`include` 경로 불일치 해결
-- `resolvePath` 이중 슬래시 버그 수정
-- ESM 실행 가드 Windows 호환성 (`fileURLToPath`)
-- `isCommandAvailable` 크로스 플랫폼 지원 (`where`/`command -v`)
-- 테스트 환경 변수 격리 (`afterEach` 복원)
 
-## [0.0.1] - 2026-07-10
-
-### Added
-- 초기 프로젝트 구조
-- `termux-utils.ts`: Termux 환경 감지 (`isTermux`, `getTermuxPrefix`)
-- `path-utils.ts`: 경로 보정 (`resolvePath`)
-- 기본 테스트 (9개)
-- LICENSE, .gitignore, .gitattributes
+- An early SIGTERM arriving after PGID publication but before the wrapper's main wait now follows the same bounded TERM-to-KILL cleanup path instead of hanging indefinitely.

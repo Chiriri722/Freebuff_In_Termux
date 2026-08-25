@@ -30,13 +30,17 @@ import {
   buildBindMountArgs,
   isTermuxHomePath,
   getProotRootPath,
+  BindMountError,
 } from './proot/path-bridge.js';
 
 // proot 래퍼 (Phase 2B)
 import { ProotDistroManager } from './proot/proot-wrapper.js';
 
 // FreeBuff 런처 (Phase 3A)
-import { FreeBuffLauncher } from './proot/freebuff-launcher.js';
+import {
+  FreeBuffLauncher,
+  createNodeSpawner,
+} from './proot/freebuff-launcher.js';
 
 // Termux 특화 기능 (Phase 3D)
 import {
@@ -63,6 +67,7 @@ export type {
   MemoryInfo,
   OomRiskAssessment,
 } from './types.js';
+export type { PreflightCheck } from './proot/freebuff-launcher.js';
 
 // 유틸리티 재수출
 export {
@@ -85,13 +90,14 @@ export {
   buildBindMountArgs,
   isTermuxHomePath,
   getProotRootPath,
+  BindMountError,
 };
 
 // proot 래퍼 재수출
 export { ProotDistroManager };
 
 // FreeBuff 런처 재수출
-export { FreeBuffLauncher };
+export { FreeBuffLauncher, createNodeSpawner };
 
 // Termux 특화 기능 재수출
 export {

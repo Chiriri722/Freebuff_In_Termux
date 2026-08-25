@@ -33,26 +33,26 @@ describe('Edge cases: resolvePath', () => {
 
   test('should handle single slash root path', () => {
     process.env.PREFIX = TERMUX_PREFIX;
-    expect(resolvePath('/')).toBe(`${TERMUX_PREFIX}/`);
+    expect(resolvePath('/')).toBe('/');
   });
 
   test('should handle very long path', () => {
     process.env.PREFIX = TERMUX_PREFIX;
     const deep = '/' + 'a/'.repeat(100) + 'file.txt';
-    expect(resolvePath(deep)).toBe(`${TERMUX_PREFIX}${deep}`);
+    expect(resolvePath(deep)).toBe(deep);
   });
 
   test('should handle path with spaces', () => {
     process.env.PREFIX = TERMUX_PREFIX;
     expect(resolvePath('/my project/src/my file.ts')).toBe(
-      `${TERMUX_PREFIX}/my project/src/my file.ts`,
+      '/my project/src/my file.ts',
     );
   });
 
   test('should handle path with unicode characters', () => {
     process.env.PREFIX = TERMUX_PREFIX;
     expect(resolvePath('/프로젝트/소스/파일.ts')).toBe(
-      `${TERMUX_PREFIX}/프로젝트/소스/파일.ts`,
+      '/프로젝트/소스/파일.ts',
     );
   });
 
@@ -167,13 +167,19 @@ describe('Edge cases: path-bridge', () => {
 
   test('buildBindMountArgs with many mounts', () => {
     const mounts = ['/tmp', '/dev', '/proc', '/sys', '/var'];
-    const args = buildBindMountArgs({ bindMounts: mounts });
-    expect(args.filter((a) => a === '--bind')).toHaveLength(6);
+    const args = buildBindMountArgs({ bindMounts: mounts }, () => true);
+    expect(args.filter((a) => a === '--bind')).toHaveLength(5);
   });
 
   test('buildBindMountArgs with duplicate default mount', () => {
-    const args = buildBindMountArgs({ bindMounts: ['/storage/emulated/0'] });
-    expect(args.filter((a) => a === '/storage/emulated/0')).toHaveLength(2);
+    const args = buildBindMountArgs(
+      {
+        storageBind: true,
+        bindMounts: ['/storage/emulated/0', '/storage/emulated/0'],
+      },
+      () => true,
+    );
+    expect(args.filter((a) => a === '/storage/emulated/0')).toHaveLength(1);
   });
 
   test('isTermuxHomePath with empty string', () => {

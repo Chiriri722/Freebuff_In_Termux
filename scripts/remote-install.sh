@@ -1,326 +1,145 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# ============================================================================
-# FreeBuff Termux — Remote One-Line Installer
-# ============================================================================
-# 사용법:
-#   curl -fsSL https://raw.githubusercontent.com/Chiriri722/Freebuff_In_Termux/main/scripts/remote-install.sh | bash
-#
-# 또는 distro 지정:
-#   curl -fsSL https://raw.githubusercontent.com/Chiriri722/Freebuff_In_Termux/main/scripts/remote-install.sh | bash -s -- debian
-#
-# 이 스크립트는 다음을 자동 수행한다:
-#   1. Termux 환경 확인
-#   2. Termux 패키지 의존성 설치 (proot-distro, nodejs, git, curl)
-#   3. GitHub에서 저장소 클론
-#   4. npm 의존성 설치 + TypeScript 빌드
-#   5. proot-distro에 Ubuntu (또는 지정 distro) 설치
-#   6. distro 내부에 Bun 런타임 설치
-#   7. distro 내부에 Node.js 설치 (freebuff 런처용)
-#   8. distro 내부에 FreeBuff CLI 설치
-#   9. xdg-open 브리지 + 래퍼 스크립트 생성
-#  10. PATH 등록
-# ============================================================================
+# FreeBuff Termux immutable-ref bootstrap installer
 set -euo pipefail
+umask 077
 
-# ─── 색상 ────────────────────────────────────────────────────
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
-log_info()  { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
-log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_ok() { echo -e "${GREEN}[OK]${NC} $1"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $1" >&2; }
 
-# ─── 설정 ────────────────────────────────────────────────────
-DISTRO="${1:-ubuntu}"
-REPO_URL="https://github.com/Chiriri722/Freebuff_In_Termux.git"
-INSTALL_DIR="${HOME}/.freebuff-termux"
-WRAPPER_DIR="${HOME}/.local/bin"
-WRAPPER_PATH="${WRAPPER_DIR}/freebuff"
-PROOT_LOGIN="proot-distro login --user root --bind /storage/emulated/0"
+validate_identifier() {
+    local value="$1" label="$2"
+    if [[ ! "${value}" =~ ^[[:alnum:]][[:alnum:]._-]{0,63}$ ]] || [[ "${value}" == "." ]] || [[ "${value}" == ".." ]]; then
+        log_error "Invalid ${label} identifier."
+        return 1
+    fi
+}
 
-echo -e "${GREEN}"
-echo "  ____             _            _           ____  _               _           "
-echo " |  _ \\  __ _  ___| | _____  __| |_   _    / ___|| |__   ___  ___| |_ ___ _ __ "
-echo " | | | |/ _\` |/ __| |/ / _ \\/ _\` | | | |   \\___ \\| '_ \\ / _ \\/ __| __/ _ \\ '__|"
-echo " | |_| | (_| | (__|   <  __/ (_| | |_| |    ___) | | | |  __/ (__| ||  __/ |   "
-echo " |____/ \\__,_|\\___|_|\\_\\___|\\__,_|\\__, |   |____/|_| |_|\\___|\\___|\\__\\___|_|   "
-echo "                                    |___/                                       "
-echo -e "${NC}"
-echo "  Termux Compatibility Layer — B+C Hybrid Strategy"
-echo ""
+validate_ref() {
+    local ref="$1"
+    [[ "${ref}" =~ ^[0-9a-f]{40}$ ]] \
+        || [[ "${ref}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][[:alnum:]._-]+)?$ ]]
+}
 
-# ─── 1. Termux 환경 확인 ────────────────────────────────────
-log_info "Step 1/9: Checking Termux environment..."
-if [[ -z "${PREFIX:-}" ]] || [[ ! "${PREFIX}" == /data/data/com.termux* ]]; then
+if [[ -z "${PREFIX:-}" ]] || [[ ! "${PREFIX}" =~ ^/data/data/com\.termux[^/]*/files/usr/?$ ]]; then
     log_error "This script must be run inside Termux."
-    log_error "Install Termux from F-Droid: https://f-droid.org/packages/com.termux/"
     exit 1
 fi
-log_ok "Running in Termux (PREFIX: ${PREFIX})"
 
-# ─── 2. Termux 패키지 의존성 설치 ────────────────────────────
-log_info "Step 2/9: Preparing Termux packages..."
+DISTRO="${1:-ubuntu}"
+FREEBUFF_TERMUX_REF="${FREEBUFF_TERMUX_REF:-}"
+FREEBUFF_TERMUX_EXPECTED_COMMIT="${FREEBUFF_TERMUX_EXPECTED_COMMIT:-}"
+FREEBUFF_TERMUX_ARTIFACT_SHA256="${FREEBUFF_TERMUX_ARTIFACT_SHA256:-}"
+REPO_URL="https://github.com/Chiriri722/Freebuff_In_Termux.git"
+SOURCE_ROOT="${XDG_DATA_HOME:-${HOME}/.local/share}/freebuff-termux/source"
+validate_identifier "${DISTRO}" "distro"
+if [[ -z "${FREEBUFF_TERMUX_REF}" ]] || ! validate_ref "${FREEBUFF_TERMUX_REF}"; then
+    log_error "FREEBUFF_TERMUX_REF must be a version tag or full 40-character commit SHA."
+    exit 1
+fi
+if [[ "${FREEBUFF_TERMUX_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+    FREEBUFF_TERMUX_EXPECTED_COMMIT="${FREEBUFF_TERMUX_REF}"
+elif [[ ! "${FREEBUFF_TERMUX_EXPECTED_COMMIT}" =~ ^[0-9a-f]{40}$ ]]; then
+    log_error "A version tag also requires FREEBUFF_TERMUX_EXPECTED_COMMIT."
+    exit 1
+fi
+if [[ ! "${FREEBUFF_TERMUX_REF}" =~ ^[0-9a-f]{40}$ ]] && [[ ! "${FREEBUFF_TERMUX_ARTIFACT_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+    log_error "A version tag also requires FREEBUFF_TERMUX_ARTIFACT_SHA256."
+    exit 1
+fi
 
-# 2-1. dpkg 손상 상태 복구 (이전 설치 중단 시 half-configured 잔존 해결)
-log_info "  Running dpkg --configure -a (fix broken state)..."
-dpkg --configure -a 2>/dev/null || true
-
-# 2-2. 전체 패키지 업그레이드 (libc++ 등 라이브러리 버전 불일치 해결)
-#      ffmpeg/libplacebo 링크 에러 등 부분 업데이트 문제를 사전 방지
-log_info "  Running pkg upgrade (sync all package versions)..."
-pkg upgrade -y 2>/dev/null || true
-
-# 2-3. 패키지 목록 업데이트
-log_info "  Running pkg update..."
+log_info "Installing bootstrap dependencies without a global package upgrade..."
 pkg update -y
+pkg install -y git curl ca-certificates
 
-# 2-4. 의존성 설치
-log_info "  Installing required packages..."
-# termux-api: termux-clipboard-set (URL 클립보드 복사 fallback용)
-pkg install -y proot-distro nodejs git curl termux-api
+STAGING_DIR="$(mktemp -d "${TMPDIR:-${PREFIX}/tmp}/freebuff-bootstrap.XXXXXX")"
+cleanup() {
+    local status=$?
+    trap - EXIT
+    if [[ -n "${CURRENT_TEMP:-}" ]]; then rm -f -- "${CURRENT_TEMP}"; fi
+    rm -rf -- "${STAGING_DIR}"
+    exit "${status}"
+}
+trap cleanup EXIT
 
-if ! command -v proot-distro &>/dev/null; then
-    log_error "Failed to install proot-distro."
-    log_error "Try manually: dpkg --configure -a && pkg upgrade -y && pkg install proot-distro"
-    exit 1
-fi
-if ! command -v node &>/dev/null; then
-    log_error "Failed to install Node.js."
-    exit 1
-fi
-log_ok "Termux dependencies installed (proot-distro, nodejs, git, curl)"
-
-# ─── 3. GitHub에서 저장소 클론 ───────────────────────────────
-log_info "Step 3/9: Cloning FreeBuff Termux repository..."
-if [[ -d "${INSTALL_DIR}/.git" ]]; then
-    log_info "Repository exists, pulling latest..."
-    cd "${INSTALL_DIR}"
-    git pull --ff-only
+if [[ "${FREEBUFF_TERMUX_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+    REPOSITORY="${STAGING_DIR}/repository"
+    git init -q "${REPOSITORY}"
+    git -C "${REPOSITORY}" remote add origin "${REPO_URL}"
+    git -C "${REPOSITORY}" fetch --quiet --depth 1 origin "${FREEBUFF_TERMUX_REF}"
+    SOURCE_COMMIT="$(git -C "${REPOSITORY}" rev-parse 'FETCH_HEAD^{commit}')"
+    git -C "${REPOSITORY}" checkout --quiet --detach "${SOURCE_COMMIT}"
 else
-    git clone "${REPO_URL}" "${INSTALL_DIR}"
-    cd "${INSTALL_DIR}"
-fi
-log_ok "Repository ready at ${INSTALL_DIR}"
-
-# ─── 4. npm 의존성 설치 + 빌드 ───────────────────────────────
-log_info "Step 4/9: Installing npm dependencies and building..."
-npm install
-npm run build
-if [[ ! -f "dist/index.js" ]]; then
-    log_error "Build failed: dist/index.js not found."
-    exit 1
-fi
-log_ok "TypeScript build complete (dist/index.js)"
-
-# ─── 5. proot-distro distro 설치 ─────────────────────────────
-log_info "Step 5/9: Installing ${DISTRO} distro via proot-distro..."
-
-# distro 설치 여부 확인: rootfs 디렉토리 존재 여부로 판단 (가장 신뢰 가능)
-DISTRO_ROOTFS="${PREFIX}/var/lib/proot-distro/containers/${DISTRO}/rootfs"
-
-if [[ -d "${DISTRO_ROOTFS}" ]]; then
-    log_ok "Distro '${DISTRO}' is already installed (${DISTRO_ROOTFS})"
-else
-    # install 시도 — 실패해도 set -e로 종료되지 않도록 || true
-    proot-distro install "${DISTRO}" 2>&1 || true
-
-    # install 후 rootfs 디렉토리가 생겼는지 확인
-    if [[ -d "${DISTRO_ROOTFS}" ]]; then
-        log_ok "Distro '${DISTRO}' installed successfully"
-    else
-        log_error "Failed to install ${DISTRO} distro"
-        log_error "Try manually: proot-distro install ${DISTRO}"
+    ARTIFACT_NAME="freebuff-termux-${FREEBUFF_TERMUX_REF}.tar.gz"
+    ARTIFACT_PATH="${STAGING_DIR}/${ARTIFACT_NAME}"
+    ARTIFACT_URL="https://github.com/Chiriri722/Freebuff_In_Termux/releases/download/${FREEBUFF_TERMUX_REF}/${ARTIFACT_NAME}"
+    curl --fail --silent --show-error --location "${ARTIFACT_URL}" -o "${ARTIFACT_PATH}"
+    printf '%s  %s\n' "${FREEBUFF_TERMUX_ARTIFACT_SHA256}" "${ARTIFACT_PATH}" | sha256sum -c -
+    tar -xzf "${ARTIFACT_PATH}" -C "${STAGING_DIR}"
+    REPOSITORY="${STAGING_DIR}/freebuff-termux-${FREEBUFF_TERMUX_REF}"
+    RELEASE_METADATA="${REPOSITORY}/RELEASE-METADATA"
+    if [[ ! -f "${RELEASE_METADATA}" ]] || [[ -L "${RELEASE_METADATA}" ]]; then
+        log_error "Release artifact metadata is missing or unsafe."
         exit 1
     fi
-fi
-
-# ─── 6. distro 내부에 Bun 설치 ───────────────────────────────
-log_info "Step 6/9: Installing Bun runtime inside ${DISTRO}..."
-BUN_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c 'export PATH=/root/.bun/bin:/usr/local/bin:/usr/bin:/bin:$PATH && command -v bun' 2>/dev/null || true)
-if [[ -n "${BUN_CHECK}" ]]; then
-    log_ok "Bun is already installed in ${DISTRO}"
-else
-    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c 'export PATH=/root/.bun/bin:/usr/local/bin:/usr/bin:/bin:$PATH && curl -fsSL https://bun.sh/install | bash'
-    log_ok "Bun installed in ${DISTRO}"
-fi
-
-# ─── 7. distro 내부에 Node.js 설치 ───────────────────────────
-log_info "Step 7/9: Installing Node.js for freebuff launcher..."
-# freebuff는 #!/usr/bin/env node shebang을 사용하므로 Node.js가 필요
-# Ubuntu 26.04 apt 저장소 서명 문제로 직접 tarball 설치
-NODE_VERSION="v22.17.1"
-NODE_URL="https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-arm64.tar.gz"
-NODE_TARBALL="${HOME}/node.tar.gz"
-
-if ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c '/usr/local/bin/node --version' 2>/dev/null; then
-    log_ok "Node.js is already installed in ${DISTRO}"
-else
-    curl -fsSL "${NODE_URL}" -o "${NODE_TARBALL}"
-    cp "${NODE_TARBALL}" "${DISTRO_ROOTFS}/tmp/node.tar.gz"
-    rm "${NODE_TARBALL}"
-    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c \
-        'tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1 && rm /tmp/node.tar.gz'
-    log_ok "Node.js ${NODE_VERSION} installed in ${DISTRO}"
-fi
-
-# ─── 8. distro 내부에 FreeBuff 설치 ──────────────────────────
-log_info "Step 8/9: Installing FreeBuff CLI inside ${DISTRO}..."
-FB_PATH='/usr/local/bin:/usr/bin:/bin:/root/.bun/bin'
-FB_CHECK=$(${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c "export PATH=${FB_PATH}:\$PATH && command -v freebuff" 2>/dev/null || true)
-if [[ -n "${FB_CHECK}" ]]; then
-    log_ok "FreeBuff is already installed in ${DISTRO}"
-else
-    ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c "export PATH=${FB_PATH}:\$PATH && bun install -g freebuff"
-    log_ok "FreeBuff installed in ${DISTRO}"
-fi
-
-# ─── 9. xdg-open 브리지 + 래퍼 스크립트 생성 ─────────────────
-log_info "Step 9/10: Creating xdg-open bridge and FreeBuff wrapper..."
-mkdir -p "${WRAPPER_DIR}"
-
-# 9-1. xdg-open 브리지 스크립트를 proot rootfs에 설치
-# FreeBuff 바이너리가 로그인 URL을 열 때 xdg-open을 호출하면
-# 이 스크립트가 URL을 ~/.freebuff-url-to-open에 기록
-cat > "${DISTRO_ROOTFS}/usr/local/bin/xdg-open" << 'XDG_EOF'
-#!/bin/bash
-# xdg-open bridge — proot 내부에서 Termux 브라우저로 URL 전달
-# FreeBuff가 xdg-open을 호출하면 URL을 절대 경로 파일에 기록
-TERMUX_HOME="/data/data/com.termux/files/home"
-URL_FILE="${TERMUX_HOME}/.freebuff-url-to-open"
-if [[ $# -lt 1 ]]; then exit 1; fi
-URL="$1"
-echo "${URL}" > "${URL_FILE}" 2>/dev/null || {
-    echo "  🔑 LOGIN URL (manual copy): ${URL}"
-    exit 0
-}
-echo "  🔑 LOGIN URL (auto-opening browser...): ${URL}"
-exit 0
-XDG_EOF
-chmod +x "${DISTRO_ROOTFS}/usr/local/bin/xdg-open"
-log_ok "xdg-open bridge installed in proot"
-
-# 9-2. FreeBuff 래퍼 스크립트 생성 (백그라운드 URL 감시자 포함)
-cat > "${WRAPPER_PATH}" << 'WRAPPER_EOF'
-#!/data/data/com.termux/files/usr/bin/bash
-# FreeBuff Termux Wrapper — proot-distro 환경에서 freebuff 실행
-# - OVERRIDE_PLATFORM=linux: linux-arm64 바이너리 다운로드
-# - xdg-open 브리지: 로그인 URL을 Termux 브라우저로 전달
-set -euo pipefail
-DISTRO="${FREEBUFF_PROOT_DISTRO:-ubuntu}"
-PROOT_LOGIN="proot-distro login --user root --bind /storage/emulated/0"
-TERMUX_HOME="${HOME}"
-PROOT_HOME="/root"
-CURRENT_DIR="$(pwd)"
-if [[ "${CURRENT_DIR}" == "${TERMUX_HOME}"* ]]; then
-    PROOT_CWD="${PROOT_HOME}${CURRENT_DIR#${TERMUX_HOME}}"
-elif [[ "${CURRENT_DIR}" == /storage/* ]]; then
-    PROOT_CWD="${CURRENT_DIR}"
-else
-    PROOT_CWD="${CURRENT_DIR}"
-fi
-
-# URL 브리지 파일
-URL_BRIDGE_FILE="${TERMUX_HOME}/.freebuff-url-to-open"
-rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
-
-# 백그라운드 URL 감시자: xdg-open이 파일에 URL을 기록하면 3단계로 전달
-url_watcher() {
-    local count=0
-    while [[ ${count} -lt 3600 ]]; do
-        if [[ -f "${URL_BRIDGE_FILE}" ]]; then
-            local url
-            url=$(cat "${URL_BRIDGE_FILE}" 2>/dev/null || true)
-            if [[ -n "${url}" ]]; then
-                echo -e "\n\033[0;34m[INFO]\033[0m Login URL detected. Delivering to browser..."
-                # 1단계: termux-open-url (브라우저 자동 열기)
-                termux-open-url "${url}" 2>/dev/null && {
-                    echo -e "\033[0;32m[OK]\033[0m Browser opened automatically."
-                } || {
-                    # 2단계: termux-clipboard-set (클립보드에 URL 복사)
-                    echo -e "\033[0;33m[WARN]\033[0m Browser auto-open failed. Trying clipboard..."
-                    termux-clipboard-set "${url}" 2>/dev/null && {
-                        echo -e "\033[0;32m[OK]\033[0m URL copied to clipboard. Paste in browser."
-                    } || {
-                        # 3단계: 터미널 대형 출력 (수동 복사)
-                        echo -e "\033[0;33m[WARN]\033[0m Clipboard unavailable. Manual copy:"
-                    }
-                }
-                # 3단계 fallback: 항상 터미널에도 출력
-                echo ""
-                echo "  ============================================"
-                echo "  🔑 LOGIN URL:"
-                echo "  ${url}"
-                echo "  ============================================"
-                echo ""
-                rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
-            fi
-        fi
-        sleep 0.5
-        ((count++))
-    done
-    rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
-}
-url_watcher &
-WATCHER_PID=$!
-cleanup() {
-    kill "${WATCHER_PID}" 2>/dev/null || true
-    rm -f "${URL_BRIDGE_FILE}" 2>/dev/null || true
-}
-trap cleanup EXIT INT TERM
-
-exec ${PROOT_LOGIN} "${DISTRO}" -- /bin/bash --norc --noprofile -c \
-    "export PATH=/usr/local/bin:/usr/bin:/bin:/root/.bun/bin:\$PATH && export OVERRIDE_PLATFORM=linux && cd '${PROOT_CWD}' && freebuff \"\$@\"" \
-    -- "$@"
-WRAPPER_EOF
-chmod +x "${WRAPPER_PATH}"
-log_ok "Wrapper script created at ${WRAPPER_PATH}"
-
-# ─── 10. PATH 등록 ───────────────────────────────────────────
-log_info "Step 10/10: Registering wrapper in PATH..."
-SHELL_RC=""
-if [[ -f "${HOME}/.bashrc" ]]; then SHELL_RC="${HOME}/.bashrc"
-elif [[ -f "${HOME}/.zshrc" ]]; then SHELL_RC="${HOME}/.zshrc"; fi
-if [[ -n "${SHELL_RC}" ]]; then
-    if grep -q "${WRAPPER_DIR}" "${SHELL_RC}" 2>/dev/null; then
-        log_ok "PATH already registered"
-    else
-        echo -e "\n# FreeBuff Termux wrapper PATH" >> "${SHELL_RC}"
-        echo "export PATH=\"${WRAPPER_DIR}:\$PATH\"" >> "${SHELL_RC}"
-        log_ok "PATH registered in ${SHELL_RC}"
+    metadata_value() {
+        local key="$1"
+        awk -v key="${key}" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }' "${RELEASE_METADATA}"
+    }
+    if [[ "$(metadata_value schema)" != "1" ]] || [[ "$(metadata_value tag)" != "${FREEBUFF_TERMUX_REF}" ]]; then
+        log_error "Release artifact metadata does not match the requested tag."
+        exit 1
     fi
+    SOURCE_COMMIT="$(metadata_value commit)"
+fi
+if [[ "${SOURCE_COMMIT}" != "${FREEBUFF_TERMUX_EXPECTED_COMMIT}" ]]; then
+    log_error "Fetched commit does not match FREEBUFF_TERMUX_REF."
+    exit 1
+fi
+
+INSTALL_DIR="${SOURCE_ROOT}/${SOURCE_COMMIT}"
+mkdir -p "${SOURCE_ROOT}"
+verify_existing_source() {
+    local installed="$1" verified="$2" relative
+    if [[ ! -d "${installed}" ]] || [[ -L "${installed}" ]]; then
+        log_error "Existing source directory is unsafe."
+        return 1
+    fi
+    for relative in \
+        scripts/install.sh \
+        scripts/remote-install.sh \
+        scripts/freebuff-wrapper.sh \
+        scripts/manage.sh \
+        scripts/xdg-open-bridge.sh \
+        scripts/lib/install-transaction.sh \
+        skill/freebuff-hermes-integration/scripts/health_check.sh; do
+        if [[ ! -f "${installed}/${relative}" ]] || [[ -L "${installed}/${relative}" ]] \
+            || [[ "$(sha256sum "${installed}/${relative}" | awk '{print $1}')" != "$(sha256sum "${verified}/${relative}" | awk '{print $1}')" ]]; then
+            log_error "Existing verified source was modified: ${relative}"
+            return 1
+        fi
+    done
+}
+
+if [[ -e "${INSTALL_DIR}" ]] || [[ -L "${INSTALL_DIR}" ]]; then
+    verify_existing_source "${INSTALL_DIR}" "${REPOSITORY}"
 else
-    log_warn "Add manually: export PATH=\"${WRAPPER_DIR}:\$PATH\""
+    mv -- "${REPOSITORY}" "${INSTALL_DIR}"
 fi
-
-# ─── 완료 ─────────────────────────────────────────────────────
-echo ""
-echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN} FreeBuff Termux installation complete!  ${NC}"
-echo -e "${GREEN}========================================${NC}"
-echo ""
-echo -e "  Distro:     ${BLUE}${DISTRO}${NC}"
-echo -e "  Repository: ${BLUE}${INSTALL_DIR}${NC}"
-echo -e "  Wrapper:    ${BLUE}${WRAPPER_PATH}${NC}"
-echo ""
-if [[ -n "${SHELL_RC}" ]]; then
-    echo -e "${YELLOW}  Restart your shell or run:${NC}"
-    echo -e "    ${BLUE}source ${SHELL_RC}${NC}"
-    echo ""
+CURRENT_LINK="${SOURCE_ROOT}/current"
+if [[ -e "${CURRENT_LINK}" ]] && [[ ! -L "${CURRENT_LINK}" ]]; then
+    log_error "Refusing to replace a non-symlink source/current path."
+    exit 1
 fi
-echo -e "  Usage: ${BLUE}cd ~/my-project && freebuff${NC}"
-echo ""
-echo -e "  Health check: ${BLUE}bash ${INSTALL_DIR}/skill/freebuff-hermes-integration/scripts/health_check.sh${NC}"
-echo ""
+CURRENT_TEMP="${SOURCE_ROOT}/.current.$$"
 
-# 에이전트/AI가 파싱할 수 있는 구조화된 상태 정보
-echo -e "${BLUE}[INSTALL_STATUS]${NC} success"
-echo -e "${BLUE}[TOOL_TYPE]${NC} termux-compatibility-layer"
-echo -e "${BLUE}[STRATEGY]${NC} B+C-hybrid (proot-distro + path-bridge)"
-echo -e "${BLUE}[DISTRO]${NC} ${DISTRO}"
-echo -e "${BLUE}[REPOSITORY]${NC} ${INSTALL_DIR}"
-echo -e "${BLUE}[WRAPPER_PATH]${NC} ${WRAPPER_PATH}"
-echo -e "${BLUE}[EXEC_COMMAND]${NC} cd ~/my-project && freebuff"
-echo -e "${BLUE}[HEALTH_CHECK]${NC} bash ${INSTALL_DIR}/skill/freebuff-hermes-integration/scripts/health_check.sh"
-if [[ -n "${SHELL_RC}" ]]; then
-    echo -e "${BLUE}[SHELL_RC]${NC} ${SHELL_RC}"
-fi
-
+export FREEBUFF_TERMUX_SOURCE_REF="${FREEBUFF_TERMUX_REF}"
+export FREEBUFF_TERMUX_SOURCE_COMMIT="${SOURCE_COMMIT}"
+log_ok "Verified source checkout: ${FREEBUFF_TERMUX_REF} (${SOURCE_COMMIT})"
+"${INSTALL_DIR}/scripts/install.sh" "${DISTRO}"
+ln -s -- "${INSTALL_DIR}" "${CURRENT_TEMP}"
+mv -Tf -- "${CURRENT_TEMP}" "${CURRENT_LINK}"

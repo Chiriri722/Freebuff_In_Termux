@@ -17,76 +17,202 @@ import type {
   LaunchOptions,
   ProotDistroConfig,
 } from '../types.js';
+import {
+  assertSafeIdentifier,
+  FREEBUFF_EXECUTABLE,
+  FREEBUFF_RUNTIME_PATH,
+} from './command-spec.js';
 import { termuxToProot, buildBindMountArgs } from './path-bridge.js';
+import { ProotDistroManager } from './proot-wrapper.js';
 
 // ─── 기본 Spawner 구현체 ─────────────────────────────────────
 
 /**
  * child_process.spawn을 기반으로 하는 기본 Spawner 구현체.
  */
-const defaultSpawner: Spawner = {
+const DEFAULT_MAX_OUTPUT_BYTES = 1024 * 1024;
+const DEFAULT_KILL_GRACE_MS = 5000;
+
+type SpawnProcess = typeof spawn;
+type ProcessKiller = (pid: number, signal: NodeJS.Signals) => boolean;
+type ProcessSignalTarget = {
+  on(event: 'SIGINT' | 'SIGTERM', listener: () => void): unknown;
+  removeListener(event: 'SIGINT' | 'SIGTERM', listener: () => void): unknown;
+};
+
+export const createNodeSpawner = (
+  spawnProcess: SpawnProcess = spawn,
+  platform: NodeJS.Platform = process.platform,
+  killProcess: ProcessKiller = process.kill,
+  signalTarget: ProcessSignalTarget = process,
+): Spawner => ({
   spawn(
     command: string,
     args: string[],
     options?: LaunchOptions,
   ): Promise<SpawnResult> {
+    const stdioMode = options?.stdio ?? 'inherit';
+    const maxOutputBytes =
+      stdioMode === 'pipe'
+        ? (options?.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES)
+        : 0;
+    const killGraceMs = options?.killGraceMs ?? DEFAULT_KILL_GRACE_MS;
+
+    if (
+      stdioMode === 'pipe' &&
+      (!Number.isSafeInteger(maxOutputBytes) || maxOutputBytes <= 0)
+    ) {
+      throw new RangeError('maxOutputBytes must be a positive integer');
+    }
+    if (!Number.isSafeInteger(killGraceMs) || killGraceMs < 0) {
+      throw new RangeError('killGraceMs must be a non-negative integer');
+    }
+    if (
+      options?.timeout !== undefined &&
+      (!Number.isSafeInteger(options.timeout) || options.timeout < 0)
+    ) {
+      throw new RangeError('timeout must be a non-negative integer');
+    }
+    if (options?.signal?.aborted) {
+      return Promise.resolve({
+        exitCode: null,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        terminationReason: 'abort',
+      });
+    }
+
     return new Promise((resolve, reject) => {
-      const stdioMode = options?.stdio ?? 'inherit';
-      const child = spawn(command, args, {
+      const child = spawnProcess(command, args, {
         cwd: options?.cwd,
         env: { ...process.env, ...options?.env },
         stdio: stdioMode,
         shell: false,
+        detached: platform !== 'win32',
       });
 
-      let stdout = '';
-      let stderr = '';
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      let capturedBytes = 0;
+      let outputTruncated = false;
+      let terminationReason: SpawnResult['terminationReason'];
+      let settled = false;
+      let timeoutTimer: NodeJS.Timeout | undefined;
+      let forceKillTimer: NodeJS.Timeout | undefined;
+
+      const signalChild = (signal: NodeJS.Signals) => {
+        if (platform !== 'win32' && child.pid) {
+          try {
+            killProcess(-child.pid, signal);
+            return;
+          } catch {
+            // Process group may already be gone; fall back to the direct child.
+          }
+        }
+        child.kill(signal);
+      };
+
+      const scheduleForceKill = () => {
+        if (settled || forceKillTimer) return;
+        if (killGraceMs === 0) {
+          signalChild('SIGKILL');
+        } else {
+          forceKillTimer = setTimeout(
+            () => signalChild('SIGKILL'),
+            killGraceMs,
+          );
+        }
+      };
+
+      const requestTermination = (
+        reason: NonNullable<SpawnResult['terminationReason']>,
+      ) => {
+        if (settled || terminationReason) return;
+        terminationReason = reason;
+        signalChild('SIGTERM');
+        scheduleForceKill();
+      };
+
+      const capture = (chunks: Buffer[], value: Buffer | string) => {
+        if (outputTruncated) return;
+        const data = Buffer.isBuffer(value) ? value : Buffer.from(value);
+        const remaining = maxOutputBytes - capturedBytes;
+        if (data.length <= remaining) {
+          chunks.push(data);
+          capturedBytes += data.length;
+          return;
+        }
+        if (remaining > 0) chunks.push(data.subarray(0, remaining));
+        capturedBytes = maxOutputBytes;
+        outputTruncated = true;
+        requestTermination('output-limit');
+      };
 
       if (stdioMode === 'pipe') {
-        child.stdout?.on('data', (data: Buffer) => {
-          stdout += data.toString();
-        });
-        child.stderr?.on('data', (data: Buffer) => {
-          stderr += data.toString();
-        });
+        child.stdout?.on('data', (data: Buffer) => capture(stdoutChunks, data));
+        child.stderr?.on('data', (data: Buffer) => capture(stderrChunks, data));
       }
 
-      // 타임아웃 처리
-      let timer: NodeJS.Timeout | undefined;
       if (options?.timeout && options.timeout > 0) {
-        timer = setTimeout(() => {
-          child.kill('SIGTERM');
-          setTimeout(() => child.kill('SIGKILL'), 5000);
-        }, options.timeout);
+        timeoutTimer = setTimeout(
+          () => requestTermination('timeout'),
+          options.timeout,
+        );
       }
 
-      // SIGINT/SIGTERM을 자식 프로세스에 전달
-      const signalHandler = (sig: NodeJS.Signals) => {
-        child.kill(sig);
+      // Node process signal listeners receive no signal-name argument, so each
+      // event needs a dedicated closure to preserve the exact signal.
+      const forwardHostSignal = (signal: 'SIGINT' | 'SIGTERM') => {
+        if (settled) return;
+        signalChild(signal);
+        scheduleForceKill();
       };
-      process.on('SIGINT', signalHandler);
-      process.on('SIGTERM', signalHandler);
+      const sigintHandler = () => forwardHostSignal('SIGINT');
+      const sigtermHandler = () => forwardHostSignal('SIGTERM');
+      const abortHandler = () => requestTermination('abort');
+      signalTarget.on('SIGINT', sigintHandler);
+      signalTarget.on('SIGTERM', sigtermHandler);
+      options?.signal?.addEventListener('abort', abortHandler, { once: true });
+      if (options?.signal?.aborted) abortHandler();
+
+      const cleanup = () => {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (forceKillTimer) clearTimeout(forceKillTimer);
+        signalTarget.removeListener('SIGINT', sigintHandler);
+        signalTarget.removeListener('SIGTERM', sigtermHandler);
+        options?.signal?.removeEventListener('abort', abortHandler);
+      };
 
       child.on('close', (code, signal) => {
-        if (timer) clearTimeout(timer);
-        process.removeListener('SIGINT', signalHandler);
-        process.removeListener('SIGTERM', signalHandler);
+        if (settled) return;
+        settled = true;
+        cleanup();
         resolve({
           exitCode: code,
           signal: signal,
-          stdout,
-          stderr,
+          stdout: Buffer.concat(stdoutChunks).toString(),
+          stderr: Buffer.concat(stderrChunks).toString(),
+          ...(terminationReason ? { terminationReason } : {}),
+          ...(outputTruncated ? { outputTruncated: true } : {}),
         });
       });
 
       child.on('error', (err) => {
-        if (timer) clearTimeout(timer);
-        process.removeListener('SIGINT', signalHandler);
-        process.removeListener('SIGTERM', signalHandler);
+        if (settled) return;
+        settled = true;
+        cleanup();
         reject(err);
       });
     });
   },
+});
+
+const defaultSpawner: Spawner = createNodeSpawner();
+
+export type PreflightCheck = (distro: string) => {
+  ready: boolean;
+  missing: string[];
 };
 
 // ─── FreeBuffLauncher 클래스 ────────────────────────────────
@@ -103,9 +229,23 @@ const defaultSpawner: Spawner = {
  */
 export class FreeBuffLauncher {
   private spawner: Spawner;
+  private preflight?: PreflightCheck;
 
-  constructor(spawner?: Spawner) {
+  constructor(spawner?: Spawner, preflight?: PreflightCheck) {
     this.spawner = spawner ?? defaultSpawner;
+    if (preflight) {
+      this.preflight = preflight;
+    } else if (!spawner) {
+      const manager = new ProotDistroManager();
+      this.preflight = (distro) => manager.preflightCheck(distro);
+    }
+  }
+
+  private assertReady(distro: string): void {
+    const result = this.preflight?.(distro);
+    if (result && !result.ready) {
+      throw new Error(`Preflight failed: ${result.missing.join(', ')}`);
+    }
   }
 
   /**
@@ -124,23 +264,34 @@ export class FreeBuffLauncher {
     freebuffArgs: string[],
     config: Partial<ProotDistroConfig> = {},
   ): [string, string[]] {
+    assertSafeIdentifier(distro, 'distro');
+    if (config.user) assertSafeIdentifier(config.user, 'user');
+
     const bindArgs = buildBindMountArgs(config);
     const userFlag = config.user ? ['--user', config.user] : [];
+
+    // 사용자 입력은 이 스크립트에 보간하지 않고 bash의 위치 인자로 전달한다.
+    const shellCommand =
+      `export PATH="${FREEBUFF_RUNTIME_PATH}:$PATH"; ` +
+      `cd -- "$1"; shift; exec ${FREEBUFF_EXECUTABLE} "$@"`;
 
     // proot-distro login 인자 구성
     const loginArgs = [
       'login',
       ...userFlag,
+      '--isolated',
+      '--shared-home',
       ...bindArgs,
       distro,
       '--',
-      'bash',
-      '-lc',
-      // Bun 환경 로드 + cd + freebuff 실행
-      `export BUN_INSTALL="$HOME/.bun" && ` +
-        `export PATH="$BUN_INSTALL/bin:$PATH" && ` +
-        `cd '${prootCwd.replace(/'/g, "'\\''")}' && ` +
-        `freebuff ${freebuffArgs.map((a) => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`,
+      '/bin/bash',
+      '--norc',
+      '--noprofile',
+      '-c',
+      shellCommand,
+      '--',
+      prootCwd,
+      ...freebuffArgs,
     ];
 
     return ['proot-distro', loginArgs];
@@ -161,7 +312,9 @@ export class FreeBuffLauncher {
     termuxCwd: string,
     args: string[] = [],
     config: Partial<ProotDistroConfig> = {},
+    controls: Pick<LaunchOptions, 'signal' | 'killGraceMs'> = {},
   ): Promise<SpawnResult> {
+    this.assertReady(distro);
     const prootCwd = termuxToProot(termuxCwd, config);
     const [command, commandArgs] = this.buildCommand(
       distro,
@@ -171,8 +324,9 @@ export class FreeBuffLauncher {
     );
 
     return this.spawner.spawn(command, commandArgs, {
-      stdio: 'inherit',
       ...config,
+      ...controls,
+      stdio: 'inherit',
     });
   }
 
@@ -194,7 +348,12 @@ export class FreeBuffLauncher {
     args: string[] = [],
     config: Partial<ProotDistroConfig> = {},
     timeout: number = 0,
+    controls: Pick<
+      LaunchOptions,
+      'signal' | 'killGraceMs' | 'maxOutputBytes'
+    > = {},
   ): Promise<SpawnResult> {
+    this.assertReady(distro);
     const prootCwd = termuxToProot(termuxCwd, config);
     const [command, commandArgs] = this.buildCommand(
       distro,
@@ -204,9 +363,10 @@ export class FreeBuffLauncher {
     );
 
     return this.spawner.spawn(command, commandArgs, {
+      ...config,
+      ...controls,
       stdio: 'pipe',
       timeout: timeout || undefined,
-      ...config,
     });
   }
 }

@@ -7,8 +7,8 @@
  * - 메모리 관리: OOM Killer 위험도 평가
  */
 
-import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, statSync } from 'node:fs';
 import { isTermux } from './termux-utils.js';
 import { isCommandAvailable } from './system-utils.js';
 import type { MemoryInfo, OomRiskAssessment } from '../types.js';
@@ -25,7 +25,7 @@ import type { MemoryInfo, OomRiskAssessment } from '../types.js';
 export const acquireWakeLock = (): boolean => {
   if (!isTermux()) return false;
   try {
-    execSync('termux-wake-lock', {
+    execFileSync('termux-wake-lock', [], {
       encoding: 'utf-8',
       timeout: 5000,
       stdio: 'pipe',
@@ -45,7 +45,7 @@ export const acquireWakeLock = (): boolean => {
 export const releaseWakeLock = (): boolean => {
   if (!isTermux()) return false;
   try {
-    execSync('termux-wake-unlock', {
+    execFileSync('termux-wake-unlock', [], {
       encoding: 'utf-8',
       timeout: 5000,
       stdio: 'pipe',
@@ -74,7 +74,7 @@ export const isWakeLockAvailable = (): boolean => {
 export const setupStorage = (): boolean => {
   if (!isTermux()) return false;
   try {
-    execSync('termux-setup-storage', {
+    execFileSync('termux-setup-storage', [], {
       encoding: 'utf-8',
       timeout: 10000,
       stdio: 'pipe',
@@ -85,23 +85,22 @@ export const setupStorage = (): boolean => {
   }
 };
 
-/**
- * 저장소가 이미 설정되어 있는지 확인한다.
- * ~/storage 디렉토리 존재 여부로 판단한다.
- */
-export const isStorageSetup = (): boolean => {
-  if (!isTermux() || !process.env.HOME) return false;
+const isDirectory = (path: string): boolean => {
   try {
-    execSync(`test -d "${process.env.HOME}/storage"`, {
-      encoding: 'utf-8',
-      timeout: 5000,
-      stdio: 'pipe',
-    });
-    return true;
+    return statSync(path).isDirectory();
   } catch {
     return false;
   }
 };
+
+/**
+ * 저장소가 이미 설정되어 있는지 확인한다.
+ * ~/storage 디렉토리 존재 여부로 판단한다.
+ */
+export const isStorageSetup = (
+  home: string | undefined = process.env.HOME,
+  directoryExists: (path: string) => boolean = isDirectory,
+): boolean => isTermux() && Boolean(home) && directoryExists(`${home}/storage`);
 
 // ─── 메모리 관리 ────────────────────────────────────────────
 
@@ -146,12 +145,12 @@ export const getMemoryInfo = (): MemoryInfo | null => {
  *
  * @returns 위험도 평가 결과
  */
-export const checkOomRisk = (): OomRiskAssessment => {
-  const memInfo = getMemoryInfo();
-
+export const checkOomRisk = (
+  memInfo: MemoryInfo | null = getMemoryInfo(),
+): OomRiskAssessment => {
   if (!memInfo) {
     return {
-      level: 'safe',
+      level: 'unknown',
       recommendedFreeKB: RECOMMENDED_FREE_KB,
       currentFreeKB: 0,
       message: 'Unable to read memory info. Proceed with caution.',
