@@ -1,5 +1,13 @@
 # Findings: FreeBuff in Termux hardening
 
+## 현재 리뷰 — 2026-09-08
+
+`main@979bb2b8230d68c68e86e7a69e6305c82b74ead1`의 [상세 리뷰와 인계](./docs/reviews/2026-09-08.md)에 F-033~F-041을 기록했다. P1은 실행 권한, wrapper stdin, guest URL 경로, CWD 실패 후 실행, TypeScript 손자 cleanup의 5건이다. P2는 wrapper 정상 종료 cleanup, doctor validation, runtime 링크 진단, 기존 테스트 실패의 4건이다.
+
+F-033~F-041은 후속 작업에서 수정했다. [수정·검증 기록](./docs/reviews/2026-09-08-hardening.md)에
+재현, 독립 리뷰 추가 지적과 조치, 호스트 결과를 기록했다. Spec-kit 명세와 Linear 이슈는
+[개발 연동](./docs/DEVELOPMENT_INTEGRATIONS.md)에서 연결한다. 아래는 발견 당시의 역사 기록이다.
+
 ## 2026-08-23 — 기준선
 
 - 저장소: `Chiriri722/Freebuff_In_Termux`

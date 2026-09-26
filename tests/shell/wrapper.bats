@@ -11,12 +11,31 @@ setup() {
 if [[ -n "${STUB_MARKER:-}" ]]; then
     printf 'called\n' >"${STUB_MARKER}"
 fi
+if [[ "${STUB_MODE:-}" == "stdin" ]]; then
+    if [[ "${STUB_REQUIRE_TTY:-0}" == 1 ]]; then [[ -t 0 ]] || exit 93; fi
+    IFS= read -r line || exit 92
+    printf 'input=%s\n' "${line}"
+    exit 0
+fi
+if [[ "${STUB_MODE:-}" == "cwd" ]]; then
+    while [[ $# -gt 0 && "$1" != -c ]]; do shift; done
+    shift
+    script="$1"
+    shift
+    /bin/bash -c 'exec() { printf "RAN:%s\n" "$PWD"; printf "ARG:%s\n" "$@"; }; '"${script}" "$@"
+    exit $?
+fi
+if [[ "${STUB_MODE:-}" == "normal-descendant" ]]; then
+    (trap '' TERM HUP; printf '%s\n' "${BASHPID}" >"${STUB_GRANDCHILD_PID_FILE}";
+      sleep 1; printf orphan >"${STUB_ORPHAN_SENTINEL}"; sleep 10) </dev/null >/dev/null 2>&1 &
+    exit "${STUB_EXIT_CODE:-0}"
+fi
 if [[ -n "${STUB_LOGIN_URL:-}" ]]; then
     bridge_file=''
     for argument in "$@"; do
         case "${argument}" in
             */.cache/freebuff-termux/sessions/session.*/login-url)
-                bridge_file="${argument}"
+                bridge_file="${HOME}${argument#/root}"
                 break
                 ;;
         esac
@@ -53,6 +72,67 @@ exec "$@"
 STUB
         chmod +x "${STUB_BIN}/setsid"
     fi
+}
+
+@test "wrapper forwards piped stdin" {
+    printf 'hello interactive input\n' >"${BATS_TEST_TMPDIR}/stdin"
+    run env HOME="${TEST_HOME}" PATH="${STUB_BIN}:${PATH}" STUB_MODE=stdin \
+        bash "${WRAPPER}" <"${BATS_TEST_TMPDIR}/stdin"
+    [ "${status}" -eq 0 ]
+    [[ "${output}" == *'input=hello interactive input'* ]]
+}
+
+@test "wrapper preserves a PTY stdin descriptor" {
+    command -v python3 >/dev/null 2>&1 || skip "requires Python PTY fixture"
+    run env HOME="${TEST_HOME}" PATH="${STUB_BIN}:${PATH}" STUB_MODE=stdin STUB_REQUIRE_TTY=1 \
+        python3 - "${WRAPPER}" <<'PYTHON'
+import os, pty, subprocess, sys
+master, slave = pty.openpty()
+try:
+    os.write(master, b'hello terminal\n')
+    result = subprocess.run(['/bin/bash', sys.argv[1]], stdin=slave, capture_output=True, timeout=10)
+    sys.stdout.buffer.write(result.stdout)
+    sys.stderr.buffer.write(result.stderr)
+    sys.exit(result.returncode)
+finally:
+    os.close(master)
+    os.close(slave)
+PYTHON
+    [ "${status}" -eq 0 ]
+    [[ "${output}" == *'input=hello terminal'* ]]
+}
+
+@test "wrapper refuses missing guest CWD and preserves valid CWD and arguments" {
+    mkdir -p "${TEST_HOME}/missing-guest-${BATS_TEST_NUMBER}"
+    cd "${TEST_HOME}/missing-guest-${BATS_TEST_NUMBER}"
+    run env HOME="${TEST_HOME}" PATH="${STUB_BIN}:${PATH}" STUB_MODE=cwd bash "${WRAPPER}"
+    [ "${status}" -ne 0 ]
+    [[ "${output}" != *RAN:* ]]
+    local valid="${BATS_TEST_TMPDIR}/space ' project"
+    mkdir -p "${valid}"
+    cd "${valid}"
+    run env HOME="${TEST_HOME}" PATH="${STUB_BIN}:${PATH}" STUB_MODE=cwd \
+        bash "${WRAPPER}" '--help' 'a b' '";$(touch injected)'
+    [ "${status}" -eq 0 ]
+    [[ "${output}" == *"RAN:${valid}"* ]]
+    [[ "${output}" == *'ARG:--help'* && "${output}" == *'ARG:a b'* ]]
+    [[ "${output}" == *'ARG:";$(touch injected)'* ]]
+}
+
+@test "wrapper cleans surviving descendants on normal and nonzero exit" {
+    for code in 0 23; do
+        local pid_file="${BATS_TEST_TMPDIR}/descendant-${code}"
+        local sentinel="${BATS_TEST_TMPDIR}/sentinel-${code}"
+        run env HOME="${TEST_HOME}" PATH="${STUB_BIN}:${PATH}" \
+            FREEBUFF_KILL_GRACE_SECONDS=0 STUB_MODE=normal-descendant \
+            STUB_EXIT_CODE="${code}" STUB_GRANDCHILD_PID_FILE="${pid_file}" \
+            STUB_ORPHAN_SENTINEL="${sentinel}" bash "${WRAPPER}"
+        [ "${status}" -eq "${code}" ]
+        [ -f "${pid_file}" ]
+        GRANDCHILD_PID="$(cat "${pid_file}")"
+        sleep 1.2
+        [ ! -e "${sentinel}" ]
+    done
 }
 
 teardown() {

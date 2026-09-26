@@ -111,7 +111,11 @@ describe('installed shell runtime contracts', () => {
       expect(localInstaller).toContain(
         'A custom Node version requires FREEBUFF_NODE_TARBALL_SHA256',
       );
-      expect(localInstaller).not.toContain('SHASUMS256.txt');
+      const executableLines = localInstaller
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('#'))
+        .join('\n');
+      expect(executableLines).not.toContain('SHASUMS256.txt');
       expect(localInstaller).toMatch(/sha256sum\s+-c/);
     });
 

@@ -52,9 +52,9 @@ describe('createNodeSpawner Linux process contracts', () => {
     10_000,
   );
 
-  linuxTest(
-    'escalates timeout across the real process group and leaves no grandchild',
-    async () => {
+  linuxTest.each([false, true])(
+    'escalates timeout across the real process group (parent ignores TERM: %s)',
+    async (parentIgnoresTerm) => {
       const fixture = mkdtempSync(join(tmpdir(), 'freebuff-spawner-linux-'));
       const pidFile = join(fixture, 'grandchild.pid');
       const sentinel = join(fixture, 'orphan-sentinel');
@@ -69,7 +69,7 @@ describe('createNodeSpawner Linux process contracts', () => {
       ].join('');
       const parentSource = [
         "const {spawn}=require('node:child_process');",
-        "process.on('SIGTERM',()=>{});",
+        parentIgnoresTerm ? "process.on('SIGTERM',()=>{});" : '',
         `spawn(process.execPath,['-e',${JSON.stringify(grandchildSource)}],{stdio:'ignore'});`,
         'setInterval(()=>{},1000);',
       ].join('');

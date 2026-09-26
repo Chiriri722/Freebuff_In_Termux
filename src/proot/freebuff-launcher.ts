@@ -98,6 +98,8 @@ export const createNodeSpawner = (
       let outputTruncated = false;
       let terminationReason: SpawnResult['terminationReason'];
       let settled = false;
+      let childClosed = false;
+      let finishClose: (() => void) | undefined;
       let timeoutTimer: NodeJS.Timeout | undefined;
       let forceKillTimer: NodeJS.Timeout | undefined;
 
@@ -110,7 +112,7 @@ export const createNodeSpawner = (
             // Process group may already be gone; fall back to the direct child.
           }
         }
-        child.kill(signal);
+        if (!childClosed) child.kill(signal);
       };
 
       const scheduleForceKill = () => {
@@ -118,10 +120,11 @@ export const createNodeSpawner = (
         if (killGraceMs === 0) {
           signalChild('SIGKILL');
         } else {
-          forceKillTimer = setTimeout(
-            () => signalChild('SIGKILL'),
-            killGraceMs,
-          );
+          forceKillTimer = setTimeout(() => {
+            forceKillTimer = undefined;
+            signalChild('SIGKILL');
+            finishClose?.();
+          }, killGraceMs);
         }
       };
 
@@ -176,26 +179,38 @@ export const createNodeSpawner = (
       options?.signal?.addEventListener('abort', abortHandler, { once: true });
       if (options?.signal?.aborted) abortHandler();
 
-      const cleanup = () => {
+      const cleanup = (keepGroupEscalation = false) => {
         if (timeoutTimer) clearTimeout(timeoutTimer);
-        if (forceKillTimer) clearTimeout(forceKillTimer);
-        signalTarget.removeListener('SIGINT', sigintHandler);
-        signalTarget.removeListener('SIGTERM', sigtermHandler);
+        if (forceKillTimer && !keepGroupEscalation)
+          clearTimeout(forceKillTimer);
+        if (!keepGroupEscalation) {
+          signalTarget.removeListener('SIGINT', sigintHandler);
+          signalTarget.removeListener('SIGTERM', sigtermHandler);
+        }
         options?.signal?.removeEventListener('abort', abortHandler);
       };
 
       child.on('close', (code, signal) => {
         if (settled) return;
-        settled = true;
-        cleanup();
-        resolve({
-          exitCode: code,
-          signal: signal,
-          stdout: Buffer.concat(stdoutChunks).toString(),
-          stderr: Buffer.concat(stderrChunks).toString(),
-          ...(terminationReason ? { terminationReason } : {}),
-          ...(outputTruncated ? { outputTruncated: true } : {}),
-        });
+        childClosed = true;
+        const keepGroupEscalation = platform !== 'win32' && !!forceKillTimer;
+        cleanup(keepGroupEscalation);
+        finishClose = () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve({
+            exitCode: code,
+            signal: signal,
+            stdout: Buffer.concat(stdoutChunks).toString(),
+            stderr: Buffer.concat(stderrChunks).toString(),
+            ...(terminationReason ? { terminationReason } : {}),
+            ...(outputTruncated ? { outputTruncated: true } : {}),
+          });
+        };
+        // A closed group leader does not prove that its descendants exited.
+        // Complete the already-requested escalation before resolving on POSIX.
+        if (!keepGroupEscalation) finishClose();
       });
 
       child.on('error', (err) => {
@@ -273,7 +288,7 @@ export class FreeBuffLauncher {
     // 사용자 입력은 이 스크립트에 보간하지 않고 bash의 위치 인자로 전달한다.
     const shellCommand =
       `export PATH="${FREEBUFF_RUNTIME_PATH}:$PATH"; ` +
-      `cd -- "$1"; shift; exec ${FREEBUFF_EXECUTABLE} "$@"`;
+      `cd -- "$1" || exit; shift; exec ${FREEBUFF_EXECUTABLE} "$@"`;
 
     // proot-distro login 인자 구성
     const loginArgs = [

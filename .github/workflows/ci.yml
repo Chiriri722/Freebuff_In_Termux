@@ -87,11 +87,11 @@ jobs:
       - name: Install shell test tools
         run: |
           sudo apt-get update
-          sudo apt-get install --yes bats shellcheck shfmt util-linux
+          sudo apt-get install --yes bats shellcheck shfmt util-linux proot
 
       - name: Bash syntax
         run: |
-          bash -n \
+          for script in \
             scripts/freebuff-wrapper.sh \
             scripts/install.sh \
             scripts/remote-install.sh \
@@ -100,7 +100,9 @@ jobs:
             scripts/release-preflight.sh \
             scripts/xdg-open-bridge.sh \
             scripts/lib/install-transaction.sh \
-            skill/freebuff-hermes-integration/scripts/health_check.sh
+            skill/freebuff-hermes-integration/scripts/health_check.sh; do
+            bash -n "$script"
+          done
 
       - name: ShellCheck
         run: |

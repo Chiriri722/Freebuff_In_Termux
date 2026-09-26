@@ -57,10 +57,10 @@ validate_manifest_contract() {
     freebuff_version="$(manifest_value freebuff_version)"
     freebuff_tarball_sha512="$(manifest_value freebuff_tarball_sha512)"
     proot_image="$(manifest_value proot_image)"
-    validate_identifier "${distro}" distro
-    validate_identifier "${node_version}" "Node version"
-    validate_identifier "${freebuff_version}" "FreeBuff version"
-    validate_pinned_image "${proot_image}"
+    validate_identifier "${distro}" distro || return 2
+    validate_identifier "${node_version}" "Node version" || return 2
+    validate_identifier "${freebuff_version}" "FreeBuff version" || return 2
+    validate_pinned_image "${proot_image}" || return 2
     if [[ -n "${node_tarball_sha256}" ]] && [[ ! "${node_tarball_sha256}" =~ ^[0-9a-f]{64}$ ]]; then
         log_error "Install manifest contains an invalid Node archive checksum."
         return 2
@@ -109,6 +109,17 @@ hash_matches() {
 declare -a CHECK_IDS=()
 declare -a CHECK_VALUES=()
 CHECK_FAILURES=0
+
+runtime_pointer_matches() {
+    local rootfs="$1" pointer="$2" expected="$3" executable="$4" target
+    [[ -L "${rootfs}/opt/freebuff-termux/${pointer}" ]] || return 1
+    target="$(readlink "${rootfs}/opt/freebuff-termux/${pointer}")" || return 1
+    # Installer links are guest-absolute; never resolve them against the host /opt.
+    [[ "${target}" == "/opt/freebuff-termux/${expected}" || "${target}" == "${expected}" ]] || return 1
+    [[ -d "${rootfs}/opt/freebuff-termux/${expected}" ]] \
+        && [[ ! -L "${rootfs}/opt/freebuff-termux/${expected}" ]] \
+        && [[ -x "${rootfs}/opt/freebuff-termux/${expected}/bin/${executable}" ]]
+}
 
 record_check() {
     local id="$1"
@@ -169,8 +180,8 @@ doctor() {
     record_check bridge hash_matches "${bridge_path}" "${bridge_sha}"
     record_check config hash_matches "${config_path}" "${config_sha}"
     record_check distro_rootfs test -d "${rootfs}"
-    record_check node test -x "${rootfs}/opt/freebuff-termux/node-${node_version}/bin/node"
-    record_check freebuff test -x "${rootfs}/opt/freebuff-termux/freebuff-${freebuff_version}/bin/freebuff"
+    record_check node runtime_pointer_matches "${rootfs}" current-node "node-${node_version}" node
+    record_check freebuff runtime_pointer_matches "${rootfs}" current-freebuff "freebuff-${freebuff_version}" freebuff
 
     local status='ok'
     if [[ ${CHECK_FAILURES} -gt 0 ]]; then status='degraded'; fi
@@ -251,7 +262,7 @@ repair_install() {
         FREEBUFF_NODE_TARBALL_SHA256="${node_tarball_sha256}" \
         FREEBUFF_VERSION="${freebuff_version}" \
         FREEBUFF_TARBALL_SHA512="${freebuff_tarball_sha512}" \
-        "${installer}" "${distro}"
+        "${BASH}" "${installer}" "${distro}"
 }
 
 update_install() {
@@ -276,7 +287,7 @@ update_install() {
     fi
     FREEBUFF_PROOT_IMAGE="${proot_image}" FREEBUFF_TERMUX_REF="${ref}" FREEBUFF_TERMUX_EXPECTED_COMMIT="${expected_commit}" \
         FREEBUFF_TERMUX_ARTIFACT_SHA256="${artifact_sha}" \
-        "${bootstrap}" "${distro}"
+        "${BASH}" "${bootstrap}" "${distro}"
 }
 
 usage() {

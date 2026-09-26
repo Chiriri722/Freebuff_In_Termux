@@ -58,6 +58,7 @@ chmod 700 "${BRIDGE_ROOT}"
 SESSION_DIR="$(mktemp -d "${BRIDGE_ROOT}/session.XXXXXX")"
 chmod 700 "${SESSION_DIR}"
 URL_BRIDGE_FILE="${SESSION_DIR}/login-url"
+GUEST_URL_BRIDGE_FILE="${PROOT_HOME}/.cache/freebuff-termux/sessions/${SESSION_DIR##*/}/login-url"
 
 is_valid_login_url() {
     local url="$1"
@@ -198,8 +199,8 @@ trap 'forward_signal TERM' TERM
 setsid --wait "${BASH}" --norc --noprofile -c \
     'set -e; pgid_file="$1"; shift; printf "%s\n" "$$" >"${pgid_file}.tmp"; chmod 600 "${pgid_file}.tmp"; mv -f "${pgid_file}.tmp" "${pgid_file}"; exec "$@"' \
     -- "${PGID_FILE}" "${PROOT_LOGIN[@]}" "${DISTRO}" -- /bin/bash --norc --noprofile -c \
-    'export PATH=/opt/freebuff-termux/current-freebuff/bin:/opt/freebuff-termux/current-node/bin:/usr/local/bin:/usr/bin:/bin:$PATH; export OVERRIDE_PLATFORM=linux; export FREEBUFF_URL_BRIDGE_FILE="$1"; export FREEBUFF_URL_ALLOW_PLAINTEXT="$2"; cd "$3"; shift 3; exec /opt/freebuff-termux/current-freebuff/bin/freebuff "$@"' \
-    -- "${URL_BRIDGE_FILE}" "${FREEBUFF_URL_ALLOW_PLAINTEXT:-0}" "${PROOT_CWD}" "$@" &
+    'export PATH=/opt/freebuff-termux/current-freebuff/bin:/opt/freebuff-termux/current-node/bin:/usr/local/bin:/usr/bin:/bin:$PATH; export OVERRIDE_PLATFORM=linux; export FREEBUFF_URL_BRIDGE_FILE="$1"; export FREEBUFF_URL_ALLOW_PLAINTEXT="$2"; cd -- "$3" || exit; shift 3; exec /opt/freebuff-termux/current-freebuff/bin/freebuff "$@"' \
+    -- "${GUEST_URL_BRIDGE_FILE}" "${FREEBUFF_URL_ALLOW_PLAINTEXT:-0}" "${PROOT_CWD}" "$@" <&0 &
 FREEBUFF_PID=$!
 
 for ((attempt = 0; attempt < 50; attempt += 1)); do
@@ -237,5 +238,4 @@ if [[ -n "${TERMINATION_SIGNAL}" ]]; then
 fi
 set -e
 FREEBUFF_PID=""
-FREEBUFF_PGID=""
 exit "${FREEBUFF_EXIT_CODE}"

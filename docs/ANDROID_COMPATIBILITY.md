@@ -2,7 +2,11 @@
 
 ## 현재 결론
 
-현재 변경은 Windows 호스트와 Node 22.17.1 Debian/WSL2 Linux에서 검증됐지만, 독립된 실제 Termux 기기 evidence는 아직 수집되지 않았다. Linux에서는 전체 Jest, `setsid` child/grandchild cleanup, 실제 installer hard-crash recovery가 통과했다. 그래도 특정 Android 버전을 “완전 호환”으로 표시하지 않는다. 첫 stable Release는 실제 기기에서 검증한 runtime commit과 그 직후의 evidence-only tag commit이 없으면 생성되지 않도록 차단돼 있다.
+2026-09-08 리뷰의 호스트 결함 9건을 수정했다. Linux Node 18/20/22/24에서 Jest 185/185,
+Bats 40/40과 필수 호스트 게이트가 통과했다. 실제 Linux PRoot HOME bind와 PTY 입력도
+확인했다. [수정 기록](./reviews/2026-09-08-hardening.md)을 기준으로 실제 Termux 검증을 진행한다.
+
+2026-08-23에는 Node 22.17.1 Debian/WSL2 Linux 검증 기록이 있지만 독립된 실제 Termux 기기 evidence는 아직 수집되지 않았다. 특정 Android 버전을 “완전 호환”으로 표시하지 않는다. 첫 stable Release는 실제 기기에서 검증한 runtime commit과 그 직후의 evidence-only tag commit이 없으면 생성되지 않도록 차단돼 있다.
 
 ## 의도한 지원 범위
 

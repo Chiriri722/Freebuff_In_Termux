@@ -2,7 +2,7 @@
 
 FreeBuff를 Android Termux에서 PRoot Linux 환경으로 실행하는 호환 레이어입니다. Termux 측 wrapper가 작업 경로, 신호, 로그인 URL을 연결하고 PRoot 내부에는 검증된 Node.js와 고정 버전 FreeBuff를 설치합니다.
 
-현재 상태는 **호스트 검증 완료, 실제 Termux 재검증 대기**입니다. 아직 Git tag와 GitHub Release가 없으므로 검증되지 않은 `main` 원라인 설치는 제공하지 않습니다.
+현재 상태는 **호스트 결함 9건 수정 완료, 실제 Termux 재검증 대기**입니다. 설치 진입점, stdin·guest URL, CWD, 프로세스 종료와 doctor를 수정하고 독립 보안 리뷰 및 Linux 회귀 검증을 수행했습니다. 상세 결과는 [수정 기록](./docs/reviews/2026-09-08-hardening.md), 후속 개발은 [Spec-kit·플러그인 연동](./docs/DEVELOPMENT_INTEGRATIONS.md)을 참고하세요. 검증되지 않은 `main` 원라인 설치는 제공하지 않습니다.
 
 ## 동작 구조
 
@@ -111,7 +111,7 @@ FREEBUFF_STORAGE_BIND=1 freebuff
 
 로그인 URL은 실행별 0700 session 디렉터리의 0600 파일로 전달되고 원자적으로 소비됩니다. 브라우저와 clipboard가 모두 실패해도 URL은 기본적으로 stdout에 출력되지 않습니다. 수동 출력은 `FREEBUFF_URL_ALLOW_PLAINTEXT=1`을 명시한 경우에만 허용됩니다.
 
-Wrapper는 PRoot를 별도 `setsid` process group으로 실행합니다. INT/TERM을 group 전체에 전달하고 기본 5초 grace 뒤에도 남은 프로세스는 KILL한 후 reap합니다. 필요하면 `FREEBUFF_KILL_GRACE_SECONDS=0..60`으로 grace를 조정할 수 있습니다.
+Wrapper는 stdin을 보존해 PRoot를 별도 `setsid` process group으로 실행하고 INT/TERM과 기본 5초 grace 뒤 KILL 처리, 정상 종료 후 잔여 group 정리를 수행합니다. `FREEBUFF_KILL_GRACE_SECONDS=0..60`으로 grace를 조정할 수 있습니다.
 
 ## 진단과 lifecycle
 
@@ -127,7 +127,7 @@ freebuff-termux doctor
 freebuff-termux doctor --json
 ```
 
-종료 코드는 `0=ok`, `1=degraded`, `2=invalid manifest/usage`입니다. schema 2 JSON에는 로컬 경로, 로그인 URL, token을 포함하지 않으며 invalid manifest에서도 stderr와 섞이지 않은 단일 JSON 객체를 반환합니다.
+종료 코드 계약은 `0=ok`, `1=degraded`, `2=invalid manifest/usage`입니다. schema 2 JSON은 로컬 경로, 로그인 URL, token을 제외합니다. doctor는 개별 manifest 필드와 실제 current runtime 링크 및 실행 파일을 확인합니다. 실제 FreeBuff 로그인 성공은 별도 확인합니다.
 
 ```bash
 # manifest에 기록된 exact source와 버전으로 복구
@@ -167,23 +167,23 @@ await launcher.launch('ubuntu', process.cwd(), [], {
 
 공유 저장소를 TypeScript API로 사용할 때도 `{ storageBind: true }`를 명시해야 합니다. 상세 API는 [Hermes API reference](./skill/freebuff-hermes-integration/references/freebuff_termux_api.md)를 참고하세요.
 
-자동화 실행인 `run()`은 stdout+stderr 합산 1MiB를 기본 상한으로 두며 timeout 또는 `AbortSignal` 취소 시 process group에 TERM을 전달하고 기본 5초 뒤 KILL로 승격합니다. `killGraceMs`와 `maxOutputBytes`는 마지막 controls 인자로 조정할 수 있고, 결과의 `terminationReason`은 `timeout`, `abort`, `output-limit` 중 하나입니다.
+자동화 실행인 `run()`은 stdout+stderr 합산 1MiB를 기본 상한으로 두며 timeout 또는 `AbortSignal` 취소 시 process group에 TERM을 전달합니다. 기본 5초 뒤 KILL 승격을 수행하고 부모가 먼저 종료해도 POSIX group 정리가 끝날 때까지 기다립니다. 이 기간의 추가 호스트 시그널도 전달합니다. `killGraceMs`와 `maxOutputBytes`는 마지막 controls 인자로 조정할 수 있고, 결과의 `terminationReason`은 `timeout`, `abort`, `output-limit` 중 하나입니다.
 
 ## Evidence와 지원 범위
 
-| 항목                               | 현재 evidence                   | 상태             |
-| ---------------------------------- | ------------------------------- | ---------------- |
-| TypeScript build/lint/format       | Windows 호스트                  | 통과             |
-| Jest unit/contract/doctor JSON     | Linux Node 22, 16 suites/175    | 통과             |
-| Bash syntax                        | Git Bash `bash -n`, 9개 파일    | 통과             |
-| ShellCheck/shfmt                   | v0.11.0/v3.13.1, 9개 파일       | 로컬 통과        |
-| Bats shell contracts               | Linux 26/26 (full installer 포함) | 통과           |
-| npm package payload                | clean install, 55개 exact entry | 통과             |
-| GitHub Actions                     | workflow·SHA pin·actionlint     | 새 변경 run 대기 |
-| aarch64 Termux fresh/rerun         | 독립 기기 증거 없음             | 대기             |
-| x86_64 Termux                      | 독립 기기 증거 없음             | 대기             |
-| Ctrl-C/잔존 PID/동시 로그인        | host contract tests             | 실제 기기 대기   |
-| Release artifact/checksum/rollback | Release 없음                    | 대기             |
+| 항목                               | 현재 evidence                                | 상태             |
+| ---------------------------------- | -------------------------------------------- | ---------------- |
+| TypeScript build/lint/format       | 2026-09-08 Windows Node 24                   | 통과             |
+| Jest unit/contract/doctor JSON     | Linux Node 18/20/22/24 각 185/185            | 통과             |
+| Bash syntax                        | 2026-09-08 Linux 개별 검사, 9개              | 통과             |
+| ShellCheck/shfmt/actionlint        | 2026-09-08 Linux 전체 검사                   | 통과             |
+| Bats shell contracts               | 2026-09-08 Linux 40/40 (full installer 포함) | 통과             |
+| npm package payload                | 2026-09-08 packed consumer, exact 55 entries | 통과             |
+| GitHub Actions                     | 로컬 workflow 검토                           | 현재 원격 미조회 |
+| aarch64 Termux fresh/rerun         | 독립 기기 증거 없음                          | 대기             |
+| x86_64 Termux                      | 독립 기기 증거 없음                          | 대기             |
+| Ctrl-C/잔존 PID/동시 로그인        | host contract tests                          | 실제 기기 대기   |
+| Release artifact/checksum/rollback | 로컬 release Bats / 기기 evidence 없음       | 실제 배포 대기   |
 
 실제 기기 evidence가 없는 조합을 “지원 완료”로 표시하지 않습니다. 상세 작업 상태는 [task-plan.md](./task-plan.md), [progress.md](./progress.md), [findings.md](./findings.md)에 기록됩니다.
 
@@ -194,7 +194,7 @@ npm ci
 npm run build
 npm run lint
 npm run format:check
-npm test -- --runInBand
+node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand
 ```
 
 CI는 Node.js 18/20/22 build·test, ESLint/Prettier, npm pack, `bash -n`, ShellCheck warning gate, shfmt, Bats 동적 shell 계약과 root 격리 full-installer hard-crash recovery를 실행합니다.

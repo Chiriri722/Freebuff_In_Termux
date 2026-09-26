@@ -11,6 +11,7 @@ npm-debug.log*
 # Environment
 .env
 .env.*
+조직 토큰.txt
 
 # OS
 .DS_Store

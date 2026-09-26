@@ -176,6 +176,38 @@ assert_old_managed_set() {
     [ "$(cat "${SENTINEL}")" = 'preserve-user-project' ]
 }
 
+@test "tampered Node and FreeBuff downloads fail before extraction or runtime execution" {
+    mark_verified_runtime_roots
+    cat >"${STUB_BIN}/curl" <<'STUB'
+#!/usr/bin/env bash
+while [[ $# -gt 0 ]]; do
+    if [[ "$1" == -o ]]; then printf 'tampered archive\n' >"$2"; exit 0; fi
+    shift
+done
+exit 99
+STUB
+    cat >"${STUB_BIN}/tar" <<'STUB'
+#!/usr/bin/env bash
+printf 'unsafe extraction\n' >"${STUB_ROOTFS}/extracted"
+exit 99
+STUB
+    chmod +x "${STUB_BIN}/curl" "${STUB_BIN}/tar"
+    for runtime in node freebuff; do
+        if [[ "${runtime}" == node ]]; then
+            chmod -x "${ROOTFS}/opt/freebuff-termux/node-v22.17.1/bin/node"
+        else
+            chmod +x "${ROOTFS}/opt/freebuff-termux/node-v22.17.1/bin/node"
+            chmod -x "${ROOTFS}/opt/freebuff-termux/freebuff-0.0.152/bin/freebuff"
+        fi
+        run run_installer ''
+        [ "${status}" -ne 0 ]
+        [[ "${output}" == *'FAILED'* ]]
+        [[ "${output}" != *'unexpected proot command'* ]]
+        [ ! -e "${ROOTFS}/extracted" ]
+        assert_old_managed_set
+    done
+}
+
 @test "full installer recovers every managed target after each transactional hard crash" {
     mark_verified_runtime_roots
     local stage

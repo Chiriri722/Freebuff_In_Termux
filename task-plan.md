@@ -1,14 +1,15 @@
 ---
 plan_id: freebuff-termux-hardening-v1
-status: host-and-linux-implementation-complete-termux-and-github-validation-pending
-current_phase: 'Phase 5 — 테스트 계층·실제 Termux 검증·CI'
-next_step: 'aarch64 Termux evidence를 수집한 뒤 변경을 push해 새 GitHub required checks를 실행한다.'
+status: host-hardening-complete-termux-validation-pending
+current_phase: '2026-09-08 Spec-kit·플러그인 연동 및 호스트 결함 수정 완료'
+next_step: '실제 Android/Termux 검증 evidence를 확보하고 변경본을 검토한다.'
+reviewed_commit: '979bb2b8230d68c68e86e7a69e6305c82b74ead1'
 repository: 'Chiriri722/Freebuff_In_Termux'
 baseline_branch: 'main'
 baseline_commit: '4c6e746fa7e1d9892383403ce47c2ae2211a4a2d'
 baseline_commit_date: '2026-07-23'
 created_at: '2026-08-15'
-last_updated: '2026-08-23'
+last_updated: '2026-09-08'
 target_path: 'task-plan.md'
 implementation_started: true
 review_method: '기존 ChatGPT Pro 산출물 복원 + 로컬 지식 그래프 + 공식 upstream 계약 + 전체 호스트 게이트'
@@ -22,6 +23,23 @@ legacy_documents:
 ---
 
 # Task Plan: FreeBuff in Termux — 안전성·재현성·실기기 품질 강화
+
+## 현재 상태 — 2026-09-08
+
+기준은 `main@979bb2b8230d68c68e86e7a69e6305c82b74ead1`이며 F-033~F-041 9건을 로컬에서 수정했다.
+[수정·검증 기록](./docs/reviews/2026-09-08-hardening.md)에 독립 보안 리뷰의 추가 지적과 조치까지 기록했다.
+[Spec-kit·플러그인 연동](./docs/DEVELOPMENT_INTEGRATIONS.md)도 구성했다.
+
+- Linux Node 18/20/22/24에서 build와 Jest 185/185 통과. lint/format, Bats 40/40, Bash/ShellCheck/shfmt/actionlint, packed consumer 통과.
+- 실제 PRoot HOME bind와 Linux PTY stdin을 포함한 회귀 테스트로 기존 결함을 확인했다.
+- 실제 Termux, 새 GitHub checks, 정식 Release 검증은 여전히 별도다. 이번에 원격 상태를 조회하지 않았다.
+- 문서 위치와 갱신 책임은 [내부 문서 안내](./docs/README.md)를 따른다. 아래의 2026-08-23 체크리스트는 당시 구현 이력이며 새 findings의 완료를 뜻하지 않는다.
+
+| 다음 작업      | 완료 조건                                                                 |
+| -------------- | ------------------------------------------------------------------------- |
+| F-033~F-041    | 호스트 수정 및 회귀 검증 완료; specs/001-runtime-hardening/tasks.md 참조  |
+| 실제 기기 검증 | Android/Termux fresh/rerun, terminal, browser/clipboard, storage evidence |
+| 배포 준비      | 변경본 검토 후 commit/CI 및 release evidence 절차                         |
 
 ## Goal
 
@@ -50,18 +68,18 @@ legacy_documents:
 - 재설치는 멱등이어야 하고, 실패한 설치는 가능한 범위에서 롤백한다.
 - 호스트 CI 성공을 Android/Termux 실기기 성공으로 표현하지 않는다.
 
-## 기준선
+## 이전 기준선 — 2026-08-23 기록
 
-| 항목                     | 상태                                             |
-| ------------------------ | ------------------------------------------------ |
-| Git                      | `main@4c6e746fa7e1d9892383403ce47c2ae2211a4a2d`  |
-| 호스트 build/lint/format | 2026-08-23 통과                                  |
-| Windows tests            | 16 suites, Linux-only 3 skip                      |
-| Linux Node 22 tests      | 16 suites/175 pass, skip 0                        |
-| Linux shell/package      | Bats 26/26 pass (full installer 포함), pack 55    |
-| 실제 Termux              | 기존 문서에 일부 성공 이력, 독립 재현 필요       |
-| 태그/Release             | 없음                                             |
-| 브랜치 보호              | 없음(원격 후속 작업)                             |
+| 항목                     | 상태                                            |
+| ------------------------ | ----------------------------------------------- |
+| Git                      | `main@4c6e746fa7e1d9892383403ce47c2ae2211a4a2d` |
+| 호스트 build/lint/format | 2026-08-23 통과                                 |
+| Windows tests            | 16 suites, Linux-only 3 skip                    |
+| Linux Node 22 tests      | 16 suites/175 pass, skip 0                      |
+| Linux shell/package      | Bats 26/26 pass (full installer 포함), pack 55  |
+| 실제 Termux              | 기존 문서에 일부 성공 이력, 독립 재현 필요      |
+| 태그/Release             | 없음                                            |
+| 브랜치 보호              | 없음(원격 후속 작업)                            |
 
 ## Findings 우선순위
 
@@ -84,12 +102,12 @@ legacy_documents:
 - [x] F-012: storage bind 기본 활성·중복 가능성 — 기본 off, 명시적 opt-in, 중복 제거.
 - [x] F-013: PREFIX/HOME 혼동에 따른 rootfs 경로 오류 — PREFIX 기본값과 distro 검증 통일.
 - [x] F-014: `/proc/meminfo` 실패를 safe로 판정 — `unknown` 등급 도입.
-- [x] F-015: 강제되지 않는 preflight, 무제한 pipe, 불완전 timeout cleanup — preflight 강제, 합산 출력 예산, AbortSignal, TERM→KILL, process-group cleanup 구현.
+- [-] F-015: preflight·출력 예산·취소 구현 후 부모 선종료 cleanup 결함 발견. F-037 회귀 수정 대기.
 - [x] F-016: 임의 절대 경로에 PREFIX를 붙이는 `resolvePath()` — 알려진 Termux system root만 변환하도록 수정.
 - [x] F-017: 현재 결함을 기대값으로 고정한 테스트 — path/storage/OOM 기존 기대를 안전 계약으로 교체.
 - [-] F-018: ShellCheck/Bats/installer/PRoot/Termux 게이트 부재 — Linux Jest/Bats/full-installer gate 구현·로컬 실행 완료, 실제 PRoot·Termux와 새 GitHub run 대기.
 - [x] F-019: npm 배포 계약 불명확 — ESM exports/types/files allowlist·prepack·Node engine·metadata와 pack 계약 테스트 구현.
-- [x] F-020: README·계획·호환성 문서 드리프트 — 문서 smoke 계약과 README/Hermes/API 동기화.
+- [-] F-020: 문서 안내와 최신 상태를 2026-09-08에 갱신. 새 런타임 결함 해결 뒤 동작 보장과 evidence를 다시 동기화한다.
 - [-] F-021: PRoot-Distro v5 계약 드리프트 — `list --quiet`, `--isolated --shared-home`, digest-pinned OCI 설치로 수정; 실제 기기 증거 대기.
 - [x] F-022: 잔여 host shell probe — `execSync`와 HOME 문자열 실행을 `execFileSync`·PATH/파일시스템 API로 제거.
 - [x] F-023: installer가 기존 사용자 파일과 전역 `/usr/local/bin`을 소유한다고 가정 — manifest path/hash 경계 검증, 기존 distro 명시적 adoption, 프로젝트 전용 `/opt/freebuff-termux/current-*` runtime으로 전환.
@@ -113,13 +131,13 @@ legacy_documents:
   - 세션별 URL 상태, `umask 077`, URL 정책, 원자적 consume를 도입한다.
   - xdg shim과 health check를 새 계약에 맞춘다.
   - Exit: 정상/오류/Ctrl-C 뒤 잔존 프로세스 0, 두 세션 교차 전달 0, invalid URL 전달 0.
-- [x] Phase 2 — TypeScript 실행 계약과 경로·입력 안전성 통합
+- [-] Phase 2 — TypeScript 실행 계약과 경로·입력 안전성 통합 (F-036/F-037로 재개)
   - 단일 `CommandSpec(command, args[])`, 식별자 검증, `--norc --noprofile`, process-group cleanup.
   - Exit: 셸/TypeScript 골든 계약과 injection 회귀 테스트 통과.
 - [-] Phase 3 — 재현 가능한 install/update/repair/uninstall
   - canonical template, 원자적 설치, manifest, rollback, 의존성 pin·checksum.
   - Exit: fresh/rerun/failure injection/update/rollback/uninstall 통합 테스트 통과.
-- [x] Phase 4 — config·doctor JSON·Hermes 계약
+- [-] Phase 4 — config·doctor JSON·Hermes 계약 (F-039/F-040으로 재개)
   - schema 검증, 구조화 진단·종료 코드, Hermes의 사람용 출력 파싱 제거.
   - Exit: `doctor --json` 계약 테스트와 민감 정보 redaction 통과.
 - [-] Phase 5 — 테스트 계층·실제 Termux 검증·CI
@@ -241,11 +259,11 @@ legacy_documents:
 
 ## Immediate Next Actions
 
-1. aarch64 Termux에서 fresh/rerun, normal/Ctrl-C/timeout process tree, URL bridge, checksum failure, lifecycle evidence를 수집한다.
-2. 변경을 검토·커밋·push한 뒤 새 CI의 Node 18/20/22, Linux Bats, root installer recovery 결과를 기록한다.
-3. 성공한 check 이름으로 main branch protection과 required checks를 적용한다.
-4. 가능하면 x86_64 Android emulator에서도 같은 최소 매트릭스를 실행한다.
-5. tested runtime 뒤 evidence 파일만 추가한 커밋에 tag를 두고 preflight가 ancestry와 exact diff를 통과할 때만 PR-10 stable Release를 진행한다.
+1. [2026-09-08 리뷰](./docs/reviews/2026-09-08.md)의 F-033~F-041을 위 우선순위대로 수정하고 재현을 회귀 테스트로 옮긴다.
+2. Windows 및 Node 18/20/22 Linux 전체 게이트를 재실행한다. 현재 Jest 실패 1건과 실제 child/guest 경계의 테스트 공백을 해소한다.
+3. aarch64 Termux에서 검증한 runtime commit으로 fresh/rerun, PTY/Ctrl-C, URL, storage, checksum failure, lifecycle evidence를 수집한다.
+4. 새 GitHub checks를 확인하고 성공한 check 이름으로 required checks와 branch protection 후속 작업을 진행한다. x86_64는 별도 기기 evidence로 표시한다.
+5. tested runtime 뒤 evidence 파일만 추가한 커밋에 tag를 두고 ancestry·exact diff·package 버전·artifact 검증을 통과할 때 PR-10 stable Release를 진행한다.
 
 ## Definition of Done
 

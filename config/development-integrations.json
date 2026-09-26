@@ -1,0 +1,34 @@
+{
+  "specKit": {
+    "version": "1.0.0",
+    "source": "https://github.com/github/spec-kit",
+    "commit": "bca679051abb80d6cf0cd909f2539a28a10eb7eb",
+    "integration": "codex",
+    "scripts": "powershell",
+    "activeSpec": "specs/001-runtime-hardening"
+  },
+  "linear": {
+    "projectId": "322a30c7-cfb5-4d96-b037-f459b2ddf069",
+    "deviceValidationIssue": "DAV-42",
+    "projectUrl": "https://linear.app/david-lee-722/project/freebuff-termux-d6b62b69085a",
+    "issues": {
+      "F033": "DAV-24",
+      "F034": "DAV-26",
+      "F035": "DAV-28",
+      "F036": "DAV-30",
+      "F037": "DAV-32",
+      "F038": "DAV-34",
+      "F039": "DAV-35",
+      "F040": "DAV-36",
+      "F041": "DAV-37"
+    }
+  },
+  "sentry": {
+    "organization": "the-voltex-club",
+    "project": "buff-termux",
+    "projectId": "4512047923920976",
+    "projectUrl": "https://the-voltex-club.sentry.io/settings/projects/buff-termux/",
+    "mode": "read-only-triage",
+    "tokenEnvironmentVariable": "SENTRY_AUTH_TOKEN"
+  }
+}

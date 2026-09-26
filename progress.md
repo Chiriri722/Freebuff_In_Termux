@@ -1,5 +1,36 @@
 # Progress: FreeBuff in Termux hardening
 
+## 2026-09-08 — Spec-kit·플러그인 연동 및 연속 수정
+
+- 공식 Spec-kit v1.0.0 Codex 스킬 10개와 PowerShell workflow를 적용하고 constitution/spec/plan/tasks를 작성했다. prerequisite checker 통과.
+- Linear FreeBuff Termux 프로젝트에 F033–F041 이슈 9건을 연결했다.
+- Sentry `the-voltex-club/buff-termux` 프로젝트 ID `4512047923920976` 조회 성공. 모든 환경, 최근 14일 미해결 오류 0건(상한 20). 로컬 토큰 파일은 Git에서 제외했다.
+- F033–F041 수정: 검증된 Bash 진입점, stdin 보존, guest URL 경로, 실패 CWD 중단, process-group 종료, 엄격한 doctor와 active runtime pointer, checksum 회귀.
+- 독립 사전 경계 조사와 사후 보안 리뷰를 수행했다. 사후 발견된 부모 close 후 호스트 signal handler 조기 제거를 RED 테스트로 확인하고 수정했다.
+- Linux Node 24.14.0: build/lint/format, Jest **17 suites / 185 tests**, Bats **40/40**, production Bash syntax 9개, ShellCheck, shfmt, packed consumer 통과. actionlint 1.7.12도 통과.
+- Linux Node 18.20.8/20.20.2/22.23.2 각각 npm ci·build·Jest 185/185 통과. Windows 최종 Jest 179 pass / 6 Linux-only skip / 실패 0.
+- 사용자 승인 후 Linear 수정 이슈 9건을 Done으로 갱신하고 실제 기기 검증 DAV-42를 Todo로 추가했다.
+- 프로세스 검증은 `--init` 컨테이너로 수행했다. init 없는 초기 컨테이너의 zombie PID는 환경 오탐으로 구분했다. 실제 Linux PRoot HOME bind와 PTY 입력 FD를 검사했으나 Android terminal 복구/브라우저 성공을 의미하지 않는다.
+- 상세 결과와 후속 항목: [수정 기록](./docs/reviews/2026-09-08-hardening.md). 아래 문서 전용 재검토 로그는 수정 전 기준선이다.
+
+## 2026-09-08 — 문서 정리 및 코드 재검토
+
+- 기준: `main@979bb2b8230d68c68e86e7a69e6305c82b74ead1`. 시작 working tree clean.
+- [문서 안내](./docs/README.md)와 [리뷰·인계 기록](./docs/reviews/2026-09-08.md)을 작성했다. 기존 역사 문서 경로를 보존하고 README, 작업 계획, 아키텍처, 기여 안내의 현재 상태를 맞췄다.
+- F-033~F-041 9건(P1 5건, P2 4건)을 등록했다. 이번 변경은 문서이며 런타임·기존 테스트 수정, commit/push/release는 하지 않았다.
+- Windows Node 24.14.0/npm 11.19.1에서 build/lint/format 통과.
+- Jest 직접 실행: 14 suite pass / 1 fail / 1 Linux-only skip; **171 pass / 1 fail / 3 skip**. 실패는 `tests/script-contracts.test.ts:114`의 출처 주석 문자열 검사다. packed consumer와 lifecycle의 실제 subprocess 검사는 통과했다.
+- WSL2 Node 24.14.0 Debian bookworm 임시 컨테이너에서 실제 런처 inner Bash, wrapper stdin, Node 손자 프로세스, wrapper 정상 종료 후 손자, doctor manifest·runtime pointer fixture를 실행했다. 새 결함의 재현 결과는 리뷰에 기록했다.
+- Git index의 실행 mode가 `100644`이며, Linux 임시 artifact에서 installer 직접 호출은 exit 126이었다.
+- Linux에서 production shell 9개를 각각 `bash -n`으로 검사해 통과했다. Bats v1.14.0 전체 **26/26 통과**이며 full installer의 SIGKILL/SIGTERM transaction fixture도 포함한다. 기존 tests가 새 결함을 검증하지 않는 이유는 리뷰에 기록했다.
+- PRoot-Distro 공식 HOME/isolated bind 계약과 URL 경로를 대조했다. 이는 upstream 계약 분석이며 실제 Android 로그인 검증이 아니다.
+- 실제 Termux/Android, Node 18/20/22 전체 매트릭스, ShellCheck/shfmt/actionlint, 원격 GitHub 상태는 이번에 재검증하지 않았다.
+- 문서 정리 후 docs-contracts 6/6, 변경 문서 9개 Prettier, 상대 링크 42개, `git diff --check`를 통과했다. 그래프 도구가 자동 갱신한 캐시 두 파일은 시작 시 원본으로 복원해 문서 변경만 남겼다.
+
+실행 중 환경 차이: npm이 `--runInBand`를 소비한 첫 실행은 worker EPERM으로 실패했다. Node로 Jest CLI를 직접 실행하고 필요한 child-spawn 제한을 해제해 실제 실패 1건만 남는 것을 확인했다. 기존 Bats 임시 폴더는 소스가 비어 있어 공식 v1.14.0을 별도 작업 폴더에 받아 사용했다. Windows `git archive` 출력의 CRLF 변환은 Git 원본 LF와 구분했으며 제품 결함으로 세지 않았다.
+
+아래 기록은 2026-08-23 당시 결과다. 이전 통과 개수나 원격 상태로 이번 기준선의 검증을 대신하지 않는다.
+
 ## 2026-08-23
 
 ### PR-00 — 계획 채택 및 기준선
@@ -165,24 +196,24 @@
 
 ### 실행 로그 요약
 
-| 명령                              | 결과               |
-| --------------------------------- | ------------------ |
-| `npm run build`                   | PASS               |
-| `npm run lint`                    | PASS               |
-| `npm run format:check`            | PASS               |
-| Jest 기본 병렬(샌드박스)          | EPERM — 환경 제약  |
-| Windows Jest coverage             | PASS 172, SKIP 3   |
-| Linux Node 22 Jest                | PASS 175/175       |
-| Git Bash `bash -n` 9개 파일       | PASS               |
-| ShellCheck v0.11.0 warning        | PASS 9개 파일      |
-| shfmt v3.13.1 diff                | PASS 9개 파일      |
-| Linux Bats v1.14.0                | PASS 26/26         |
+| 명령                              | 결과                      |
+| --------------------------------- | ------------------------- |
+| `npm run build`                   | PASS                      |
+| `npm run lint`                    | PASS                      |
+| `npm run format:check`            | PASS                      |
+| Jest 기본 병렬(샌드박스)          | EPERM — 환경 제약         |
+| Windows Jest coverage             | PASS 172, SKIP 3          |
+| Linux Node 22 Jest                | PASS 175/175              |
+| Git Bash `bash -n` 9개 파일       | PASS                      |
+| ShellCheck v0.11.0 warning        | PASS 9개 파일             |
+| shfmt v3.13.1 diff                | PASS 9개 파일             |
+| Linux Bats v1.14.0                | PASS 26/26                |
 | Full installer failpoint matrix   | PASS 5 stages × 2 signals |
-| npm pack + clean consumer         | PASS 55 entries    |
-| GitHub workflow/actionlint 1.7.12 | PASS 2개 파일      |
-| Linux release artifact            | PASS 67 entries    |
-| GitHub baseline CI                | PASS, old SHA only |
-| GitHub tag/release/protection      | 0/0/none           |
+| npm pack + clean consumer         | PASS 55 entries           |
+| GitHub workflow/actionlint 1.7.12 | PASS 2개 파일             |
+| Linux release artifact            | PASS 67 entries           |
+| GitHub baseline CI                | PASS, old SHA only        |
+| GitHub tag/release/protection     | 0/0/none                  |
 
 ### 다음 행동
 

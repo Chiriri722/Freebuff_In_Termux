@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file. The format foll
 
 ## [Unreleased]
 
+### Fixed
+
+- Run verified installer/bootstrap entrypoints through Bash when executable mode is absent.
+- Preserve wrapper stdin and map private URL queues into the isolated guest HOME.
+- Stop all launch paths when the requested working directory is unavailable.
+- Complete process-group cleanup after parent exit, including further host signals during grace.
+- Validate every doctor manifest field and the active guest runtime pointers.
+- Allow checksum provenance comments while testing tampered archive rejection before execution.
+
+### Development
+
+- Add pinned Spec-kit v1.0.0 Codex workflows and link hardening tasks to Linear and read-only Sentry triage.
+- Extend Linux PTY, PRoot, process lifecycle, bootstrap and doctor regression coverage.
+
 ### Added
 
 - Session-scoped login URL bridge with private permissions and atomic consume.

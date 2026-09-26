@@ -29,6 +29,90 @@ const createSpawnHarness = () => {
 };
 
 describe('createNodeSpawner', () => {
+  test.each(['timeout', 'abort', 'output-limit', 'SIGINT', 'SIGTERM'])(
+    'retains group escalation after the parent closes on %s',
+    async (trigger) => {
+      jest.useFakeTimers();
+      const harness = createSpawnHarness();
+      const signals = new EventEmitter();
+      const killer = jest.fn(() => true);
+      const controller = new AbortController();
+      const result = createNodeSpawner(
+        harness.spawn,
+        'linux',
+        killer,
+        signals,
+      ).spawn('command', [], {
+        stdio: 'pipe',
+        timeout: trigger === 'timeout' ? 10 : 0,
+        signal: controller.signal,
+        maxOutputBytes: 1,
+        killGraceMs: 50,
+      });
+      if (trigger === 'timeout') await jest.advanceTimersByTimeAsync(10);
+      else if (trigger === 'abort') controller.abort();
+      else if (trigger === 'output-limit') harness.stdout.write('ab');
+      else signals.emit(trigger);
+      harness.emitter.emit('close', 0, null);
+      await jest.advanceTimersByTimeAsync(50);
+      expect(killer).toHaveBeenCalledWith(-4242, 'SIGKILL');
+      expect(harness.kill).not.toHaveBeenCalled();
+      await result;
+      expect(signals.listenerCount('SIGTERM')).toBe(0);
+    },
+  );
+
+  test('never falls back to a reaped child when its process group is gone', async () => {
+    jest.useFakeTimers();
+    const harness = createSpawnHarness();
+    const killer = jest.fn(() => true);
+    const controller = new AbortController();
+    const result = createNodeSpawner(harness.spawn, 'linux', killer).spawn(
+      'command',
+      [],
+      {
+        signal: controller.signal,
+        killGraceMs: 20,
+      },
+    );
+    controller.abort();
+    harness.emitter.emit('close', 0, null);
+    killer.mockImplementation(() => {
+      throw new Error('ESRCH');
+    });
+    await jest.advanceTimersByTimeAsync(20);
+    expect(harness.kill).not.toHaveBeenCalled();
+    await result;
+  });
+
+  test('keeps forwarding host signals while the closed parent group is still terminating', async () => {
+    jest.useFakeTimers();
+    const harness = createSpawnHarness();
+    const signals = new EventEmitter();
+    const killer = jest.fn(() => true);
+    const controller = new AbortController();
+    const result = createNodeSpawner(
+      harness.spawn,
+      'linux',
+      killer,
+      signals,
+    ).spawn('command', [], {
+      signal: controller.signal,
+      killGraceMs: 50,
+    });
+    controller.abort();
+    harness.emitter.emit('close', 0, null);
+    expect(signals.listenerCount('SIGINT')).toBe(1);
+    expect(signals.listenerCount('SIGTERM')).toBe(1);
+    signals.emit('SIGINT');
+    expect(killer).toHaveBeenCalledWith(-4242, 'SIGINT');
+    await jest.advanceTimersByTimeAsync(50);
+    await result;
+    expect(killer).toHaveBeenCalledWith(-4242, 'SIGKILL');
+    expect(signals.listenerCount('SIGINT')).toBe(0);
+    expect(signals.listenerCount('SIGTERM')).toBe(0);
+  });
+
   afterEach(() => {
     jest.useRealTimers();
   });
@@ -124,6 +208,7 @@ describe('createNodeSpawner', () => {
     const controller = new AbortController();
     const resultPromise = spawner.spawn('command', [], {
       signal: controller.signal,
+      killGraceMs: 0,
     });
 
     controller.abort();

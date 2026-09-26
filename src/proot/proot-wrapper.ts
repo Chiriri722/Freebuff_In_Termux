@@ -234,7 +234,7 @@ export class ProotDistroManager {
     const prootCwd = termuxToProot(termuxCwd, config);
     const cmd =
       `export PATH="${FREEBUFF_RUNTIME_PATH}:$PATH"; ` +
-      `cd -- "$1"; shift; exec ${FREEBUFF_EXECUTABLE} "$@"`;
+      `cd -- "$1" || exit; shift; exec ${FREEBUFF_EXECUTABLE} "$@"`;
     const result = this.execInDistro(distro, cmd, config, [prootCwd, ...args]);
     return { ...result, termuxCwd, prootCwd };
   }

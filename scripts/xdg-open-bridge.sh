@@ -46,7 +46,7 @@ if [[ -z "${URL_FILE}" ]]; then
     exit 3
 fi
 
-if [[ ! "${URL_FILE}" =~ ^/data/data/com\.termux/files/home/\.cache/freebuff-termux/sessions/session\.[[:alnum:]]{6}/login-url$ ]]; then
+if [[ ! "${URL_FILE}" =~ ^/root/\.cache/freebuff-termux/sessions/session\.[[:alnum:]]{6}/login-url$ ]]; then
     echo "xdg-open: rejected unsafe bridge path" >&2
     print_plaintext_fallback "${URL}"
     exit 3
